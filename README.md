@@ -15,10 +15,10 @@ Firmware otonom robot **Sumo 500g (Summobot V1)** berbasis mikrokontroler **ESP3
 | **Cytron IR Start Module** | `IR_START` | **GPIO 4** | Digital In (Pull-up) | **Active-LOW** (Debounced 20ms). Menunggu trigger remote wasit / start tombol. |
 | **Line IR Depan-Kiri (FL)** | `LINE_FL` | **GPIO 34** | Input Only (GPI) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis depan-kiri. |
 | **Line IR Depan-Kanan (FR)** | `LINE_FR` | **GPIO 35** | Input Only (GPI) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis depan-kanan. |
-| **Line IR Belakang-Kiri (BL)** | `LINE_BL` | **GPIO 36** | Input Only (GPI) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis belakang-kiri. |
-| **Line IR Belakang-Kanan (BR)**| `LINE_BR` | **GPIO 39** | Input Only (GPI) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis belakang-kanan. |
+| **Line IR Belakang-Kiri (BL)** | `LINE_BL` | **GPIO 14** | Digital In | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis belakang-kiri (dipindah dari GPIO 36). |
+| **Line IR Belakang-Kanan (BR)**| `LINE_BR` | **GPIO 13** | Digital In | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis belakang-kanan (dipindah dari GPIO 39). |
 
-> *Catatan Sensor Garis (GPIO 34, 35, 36, 39):* Merupakan pin *Input-Only* pada ESP32 (tidak memiliki internal pull-up). Gunakan modul sensor garis dengan output komparator digital yang aktif menarik sinyal ke LOW/HIGH.
+> *Catatan Sensor Garis:* GPIO 34 & 35 merupakan pin *Input-Only* (GPI, butuh modul komparator eksternal), sedangkan GPIO 14 & 13 merupakan pin GPIO standar dengan dukungan internal pull-up.
 
 ---
 
