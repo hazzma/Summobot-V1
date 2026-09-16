@@ -7,10 +7,15 @@
 #include "tof_task.h"
 #include "imu_task.h"
 #include "cli.h"
+#include "ble_task.h"
+#include "speed_config.h"
 
 void setup() {
   // Inisialisasi Serial UART0 untuk debug dan interaktif CLI non-blocking
   Serial.begin(115200);
+
+  // Muat profil kecepatan dan parameter NVM yang tersimpan
+  initSpeedProfilesFromNVM();
 
   // Buat antrean perintah sistem/CLI dan mutex I2C1
   cliCommandQueue = xQueueCreate(16, sizeof(SysCmd));
@@ -27,11 +32,12 @@ void setup() {
   xTaskCreatePinnedToCore(fsmTask,   "fsm",   4096, nullptr, 3, nullptr, 0);
 
   // ---------------------------------------------------------------------------
-  // Core 1: Jalur Sensor I2C (ToF I2C0 & IMU I2C1) & Antarmuka Serial CLI
+  // Core 1: Jalur Sensor I2C (ToF I2C0 & IMU I2C1), Serial CLI & Wireless BLE
   // ---------------------------------------------------------------------------
   xTaskCreatePinnedToCore(tofTask,   "tof",   4096, nullptr, 3, nullptr, 1);
   xTaskCreatePinnedToCore(imuTask,   "imu",   2048, nullptr, 3, nullptr, 1);
   xTaskCreatePinnedToCore(cliTask,   "cli",   4096, nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(bleTask,   "ble",   4096, nullptr, 2, nullptr, 1);
 
   Serial.println("[SYSTEM] Semua task berhasil disematkan ke Core 0 & Core 1.");
 }

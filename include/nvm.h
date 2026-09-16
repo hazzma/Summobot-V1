@@ -18,4 +18,6 @@ namespace nvm {
   void saveSpeedMode(SpeedMode mode);
   bool isGyroEnabled();
   void setGyroEnabled(bool enabled);
+  bool loadProfileFromNVM(SpeedMode mode, SpeedProfile& out);
+  void saveProfileToNVM(SpeedMode mode, const SpeedProfile& in);
 }

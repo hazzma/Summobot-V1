@@ -36,7 +36,7 @@ Dipasang menghadap ke lantai di 4 pojok sasis robot:
 | Kategori / Sinyal | GPIO | Sifat Pin | Posisi Fisik & Fungsi |
 |---|---|---|---|
 | `LINE_FL` | **34** | Input-only (no pull) | Sudut Depan-Kiri (deteksi garis putih) |
-| `LINE_FR` | **35** | Input-only (no pull) | Sudut Depan-Kanan (deteksi garis putih) |
+| `LINE_FR` | **23** | Digital In (pull capable) | Sudut Depan-Kanan (deteksi garis putih, dipindah dari GPIO 35) |
 | `LINE_BL` | **14** | Digital In (pull capable) | Sudut Belakang-Kiri (deteksi garis putih, dipindah dari GPIO 36) |
 | `LINE_BR` | **13** | Digital In (pull capable) | Sudut Belakang-Kanan (deteksi garis putih, dipindah dari GPIO 39) |
 
@@ -602,7 +602,7 @@ Confirmed active-LOW: sensor pulls the line LOW when it sees the white edge line
 #include "driver/gpio.h"
 
 #define IR_FL GPIO_NUM_34
-#define IR_FR GPIO_NUM_35
+#define IR_FR GPIO_NUM_23
 #define IR_BL GPIO_NUM_14
 #define IR_BR GPIO_NUM_13
 
@@ -1058,7 +1058,7 @@ bool cytronStartReceived() {
 - **Pushback & Stalemate Detection:** `handlePushback()` is active via IMU (`accelX < -0.30G`), providing an automatic side-jink maneuver when pushed backward during head-on engagements, independent of current sensing (`HAS_CUR_SENSE`).
 - **Timing & Search Tunables:** Robot menggunakan mode **Smooth Pursuit Curve** teruji (kedua roda berputar maju positif saat belok mengejar musuh), dan otomatis **DIAM (`stopAll()`)** saat tidak ada objek terdeteksi di rentang 1–400 mm untuk mencegah getaran liar (*chattering*) dan tabrakan meja uji.
 - **6x ToF Sensors: CONFIRMED & ACTIVE (`HAS_EXTRA_TOF = 1`)** — Seluruh 6 sensor ToF aktif untuk deteksi 360° penuh pada I2C0 (Front-L/C/R) dan I2C1 (Mid-Left, Mid-Right, Mid-Back), dengan algoritma terpadu: Smooth Pursuit Curve pada 3 sensor depan, dan auto-pivot saat sensor samping/belakang mengunci lawan.
-- **Flip `HAS_LINE_IR` to `1`** once the 4-sensor line array is wired (reserved GPIO 34, 35, 14, 13) — activates corner-aware edge avoidance.
+- **Flip `HAS_LINE_IR` to `1`** once the 4-sensor line array is wired (reserved GPIO 34, 23, 14, 13) — activates corner-aware edge avoidance.
 - **`INVERT_RIGHT_MOTOR`** is set `true` per your note — double check the robot actually drives straight with equal `setLeft()`/`setRight()` values once assembled; flip if it turns out backwards.
 - **Arena Tuning Parameters:**
   - `PROFILE_TEST`: `attackFull = 55`, `attackOuter = 50`, `attackInner = 45`, `turnInPlace = 90` (profil aman meja dengan pergerakan sangat halus).

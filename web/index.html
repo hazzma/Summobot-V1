@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Summobot V1 — Tuning & Telemetry Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Top Navigation / Header -->
+  <header class="app-header">
+    <div class="brand-container">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+          <polyline points="2 17 12 22 22 17"></polyline>
+          <polyline points="2 12 12 17 22 12"></polyline>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">SUMMOBOT V1</h1>
+        <p class="brand-subtitle">Telemetry, Anti-Jengat Tuner & Calibration Studio</p>
+      </div>
+    </div>
+
+    <!-- Connection & Quick Control Bar -->
+    <div class="header-actions">
+      <div class="connection-status-pill" id="connPill">
+        <span class="status-dot"></span>
+        <span class="status-label" id="connLabel">Terputus</span>
+      </div>
+
+      <button id="btnBleConnect" class="btn btn-primary">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M7 7l10 10-5 5V2l5 5L7 17"></path>
+        </svg>
+        Konek BLE
+      </button>
+
+      <button id="btnSerialConnect" class="btn btn-secondary">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+          <circle cx="8" cy="12" r="2"></circle>
+          <path d="M14 12h4"></path>
+        </svg>
+        Konek Serial (USB)
+      </button>
+
+      <button id="btnEStop" class="btn btn-danger" title="Emergency Stop Motor">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        E-STOP
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="main-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="tab-telemetry">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          Live Telemetry & Kalibrasi
+        </button>
+        <button class="nav-tab" data-tab="tab-accel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3v18h18"></path>
+            <path d="M19 9l-5 5-4-4-3 3"></path>
+          </svg>
+          Kurva Accel (Anti-Jengat)
+        </button>
+        <button class="nav-tab" data-tab="tab-tuning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Tuning Parameter (NVM)
+        </button>
+        <button class="nav-tab" data-tab="tab-console">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          Terminal Log / Raw JSON
+        </button>
+      </nav>
+
+      <!-- Robot Operating Mode Selector Card -->
+      <div class="glass-card mode-selector-card">
+        <h3 class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          Mode Operasional Robot
+        </h3>
+        <p class="card-desc">Pilih mode kerja robot secara langsung:</p>
+
+        <!-- Primary Mode: Ambil Data vs Combat -->
+        <div class="op-mode-group">
+          <button id="btnOpData" class="btn-op active">
+            <span class="op-icon">📊</span>
+            <div class="op-text">
+              <span class="op-title">Ambil Data</span>
+              <span class="op-sub">Motor OFF / Kalibrasi</span>
+            </div>
+          </button>
+          
+          <button id="btnOpCombat" class="btn-op">
+            <span class="op-icon">⚔️</span>
+            <div class="op-text">
+              <span class="op-title">Combat</span>
+              <span class="op-sub">Otonom / Tanding</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Combat Sub-Selector (Tampil saat Mode Combat aktif) -->
+        <div id="combatSubOptions" class="combat-sub-box">
+          <span class="sub-heading">Pilih Tingkat Daya Combat:</span>
+          <div class="combat-level-group">
+            <button id="btnCombatTest" class="btn-level active" data-level="TEST">
+              🛡️ Test (Aman / Meja)
+            </button>
+            <button id="btnCombatComp" class="btn-level" data-level="COMPETITION">
+              🔥 Competition (Full Power)
+            </button>
+          </div>
+
+          <!-- Quick Action Buttons for Combat -->
+          <div class="combat-action-bar">
+            <button id="btnQuickStart" class="btn btn-sm btn-combat-start">
+              🚀 START COMBAT
+            </button>
+            <button id="btnQuickStop" class="btn btn-sm btn-combat-stop">
+              ⏸️ STANDBY
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stream Selector Card -->
+      <div class="glass-card stream-selector">
+        <h3 class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
+          Filter Logging
+        </h3>
+        <p class="card-desc">Pilih data yang ingin dikirim sumo bot:</p>
+        
+        <label class="custom-checkbox">
+          <input type="checkbox" id="chkStreamIR" checked>
+          <span class="checkmark"></span>
+          <span>4x Line IR (Garis Dohyo)</span>
+        </label>
+        
+        <label class="custom-checkbox">
+          <input type="checkbox" id="chkStreamToF" checked>
+          <span class="checkmark"></span>
+          <span>6x ToF Distance (Musuh)</span>
+        </label>
+        
+        <label class="custom-checkbox">
+          <input type="checkbox" id="chkStreamIMU" checked>
+          <span class="checkmark"></span>
+          <span>IMU MPU6050 (Pitch/Roll)</span>
+        </label>
+
+        <label class="custom-checkbox">
+          <input type="checkbox" id="chkStreamState" checked>
+          <span class="checkmark"></span>
+          <span>FSM State & Motor PWM</span>
+        </label>
+
+        <div class="stream-rate-container">
+          <label for="streamHz">Frekuensi Update:</label>
+          <div class="hz-selector">
+            <select id="streamHz">
+              <option value="5">5 Hz (Hemat Bandwidth)</option>
+              <option value="10" selected>10 Hz (Rekomendasi BLE)</option>
+              <option value="20">20 Hz (Sangat Halus)</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="btnApplyStream" class="btn btn-sm btn-outline-cyan">
+          Terapkan Filter
+        </button>
+      </div>
+
+      <!-- System Stats Card -->
+      <div class="glass-card sys-stats">
+        <div class="stat-row">
+          <span class="stat-name">Mode Operasi</span>
+          <span class="stat-badge" id="statOpMode">AMBIL DATA</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-name">Profil Daya</span>
+          <span class="stat-badge" id="statMode">TEST</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-name">FSM State</span>
+          <span class="stat-badge stat-fsm" id="statFsm">STANDBY</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-name">Motor L / R</span>
+          <span class="stat-val font-mono" id="statMotor">0 / 0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-name">Tilt Warning</span>
+          <span class="stat-badge stat-green" id="statTilt">NORMAL</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Panels -->
+    <section class="content-panels">
+      <!-- PANEL 1: LIVE TELEMETRY & KALIBRASI -->
+      <div class="tab-panel active" id="tab-telemetry">
+        <div class="panel-grid-2">
+          
+          <!-- 4x IR LINE CALIBRATION & SENSORS -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h2 class="card-heading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                Kalibrasi 4x Line IR (Sensor Garis Putih)
+              </h2>
+              <span class="badge-tag">Garis = PUTIH / Bahaya</span>
+            </div>
+            <p class="card-desc">
+              Visualisasi posisi 4 sensor IR di sudut robot. Jika sensor mendeteksi garis putih, indikator akan menyala <strong>MERAH</strong> dan memicu reflex mundur darurat.
+            </p>
+
+            <div class="robot-ir-dohyo-visual">
+              <div class="robot-outline">
+                <div class="robot-front-marker">DEPAN (BLADE)</div>
+                
+                <!-- Sensor Depan -->
+                <div class="ir-node-container node-fl">
+                  <div class="ir-bulb" id="bulb-FL"></div>
+                  <span class="ir-name">FL (GPIO 34)</span>
+                  <span class="ir-state-tag" id="tag-FL">HITAM (AMAN)</span>
+                </div>
+
+                <div class="ir-node-container node-fr">
+                  <div class="ir-bulb" id="bulb-FR"></div>
+                  <span class="ir-name">FR (GPIO 23)</span>
+                  <span class="ir-state-tag" id="tag-FR">HITAM (AMAN)</span>
+                </div>
+
+                <div class="robot-body-center">
+                  <span>SUMO 500g</span>
+                </div>
+
+                <!-- Sensor Belakang -->
+                <div class="ir-node-container node-bl">
+                  <div class="ir-bulb" id="bulb-BL"></div>
+                  <span class="ir-name">BL (GPIO 14)</span>
+                  <span class="ir-state-tag" id="tag-BL">HITAM (AMAN)</span>
+                </div>
+
+                <div class="ir-node-container node-br">
+                  <div class="ir-bulb" id="bulb-BR"></div>
+                  <span class="ir-name">BR (GPIO 13)</span>
+                  <span class="ir-state-tag" id="tag-BR">HITAM (AMAN)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Petunjuk Kalibrasi IR -->
+            <div class="calibration-tip">
+              <strong>💡 Tips Kalibrasi Trimpot IR:</strong>
+              Putar trimpot pada modul IR di robot hingga LED indikator mati di atas arena hitam, dan menyala terang tepat saat berada di atas garis putih dohyo. Pastikan keempat tag di atas berubah "PUTIH" saat melintasi garis.
+            </div>
+          </div>
+
+          <!-- 6x TOF DISTANCE RADAR & BARS -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h2 class="card-heading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M16.2 7.8l-2 6.4-6.4 2 2-6.4z"></path></svg>
+                6x ToF Distance (Deteksi Lawan)
+              </h2>
+              <span class="badge-tag font-mono">Max: 400 mm</span>
+            </div>
+            
+            <div class="tof-meters-grid">
+              <!-- FL ToF -->
+              <div class="tof-meter-card">
+                <div class="tof-meta">
+                  <span class="tof-title">Front-Left (FL)</span>
+                  <span class="tof-val font-mono" id="tofValFL">--- mm</span>
+                </div>
+                <div class="tof-bar-track">
+                  <div class="tof-bar-fill" id="tofBarFL" style="width: 0%;"></div>
+                </div>
+                <span class="tof-sub">I2C0 @ 0x2A (Kiri Depan)</span>
+              </div>
+
+              <!-- FC ToF -->
+              <div class="tof-meter-card tof-primary">
+                <div class="tof-meta">
+                  <span class="tof-title">Front-Center (FC)</span>
+                  <span class="tof-val font-mono" id="tofValFC">--- mm</span>
+                </div>
+                <div class="tof-bar-track">
+                  <div class="tof-bar-fill fill-target" id="tofBarFC" style="width: 0%;"></div>
+                </div>
+                <span class="tof-sub">I2C0 @ 0x2B (Sergap Lurus)</span>
+              </div>
+
+              <!-- FR ToF -->
+              <div class="tof-meter-card">
+                <div class="tof-meta">
+                  <span class="tof-title">Front-Right (FR)</span>
+                  <span class="tof-val font-mono" id="tofValFR">--- mm</span>
+                </div>
+                <div class="tof-bar-track">
+                  <div class="tof-bar-fill" id="tofBarFR" style="width: 0%;"></div>
+                </div>
+                <span class="tof-sub">I2C0 @ 0x2C (Kanan Depan)</span>
+              </div>
+
+              <!-- ML ToF -->
+              <div class="tof-meter-card">
+                <div class="tof-meta">
+                  <span class="tof-title">Mid-Left (ML)</span>
+                  <span class="tof-val font-mono" id="tofValML">--- mm</span>
+                </div>
+                <div class="tof-bar-track">
+                  <div class="tof-bar-fill fill-side" id="tofBarML" style="width: 0%;"></div>
+                </div>
+                <span class="tof-sub">I2C1 @ 0x2C (Flank Kiri)</span>
+              </div>
+
+              <!-- MR ToF -->
+              <div class="tof-meter-card">
+                <div class="tof-meta">
+                  <span class="tof-title">Mid-Right (MR)</span>
+                  <span class="tof-val font-mono" id="tofValMR">--- mm</span>
+                </div>
+                <div class="tof-bar-track">
+                  <div class="tof-bar-fill fill-side" id="tofBarMR" style="width: 0%;"></div>
+                </div>
+                <span class="tof-sub">I2C1 @ 0x2B (Flank Kanan)</span>
+              </div>
+
+              <!-- RR ToF -->
+              <div class="tof-meter-card tof-rear">
+                <div class="tof-meta">
+                  <span class="tof-title">Rear (RR)</span>
+                  <span class="tof-val font-mono" id="tofValRR">--- mm</span>
+                </div>
+                <div class="tof-bar-track">
+                  <div class="tof-bar-fill fill-rear" id="tofBarRR" style="width: 0%;"></div>
+                </div>
+                <span class="tof-sub">I2C1 @ 0x2A (Ancaman Belakang)</span>
+              </div>
+            </div>
+
+            <!-- IMU Attitude Gauge -->
+            <div class="imu-card-inline">
+              <h3 class="sub-title">IMU MPU6050 (Attitude & Tilt)</h3>
+              <div class="imu-grid">
+                <div class="imu-cell">
+                  <span class="lbl">Pitch:</span>
+                  <span class="val font-mono" id="imuPitch">0.0°</span>
+                </div>
+                <div class="imu-cell">
+                  <span class="lbl">Roll:</span>
+                  <span class="val font-mono" id="imuRoll">0.0°</span>
+                </div>
+                <div class="imu-cell">
+                  <span class="lbl">Accel Z:</span>
+                  <span class="val font-mono" id="imuAz">1.00g</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 2: KURVA ACCEL (ANTI-JENGAT) -->
+      <div class="tab-panel" id="tab-accel">
+        <div class="panel-grid-2">
+          
+          <!-- Curve Tuner Card -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h2 class="card-heading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                Anti-Jengat (Slew-Rate Ramp Tuner)
+              </h2>
+              <span class="badge-tag tag-cyan">Hardware Ramp 200 Hz</span>
+            </div>
+            
+            <p class="card-desc">
+              Ketika motor DC berdaya tinggi langsung diberi PWM 255 dari keadaan diam (0), robot 500g yang ringan akan langsung <strong>terangkat/jengat (wheelie)</strong>, blade terangkat ke atas, dan lawan gampang menyusup ke bawah blade!
+              <br><br>
+              Pengatur <strong>accelRate</strong> membatasi lonjakan PWM per tick 5ms sehingga robot meluncur kencang secara mantap tanpa jengat.
+            </p>
+
+            <div class="control-box">
+              <div class="slider-row">
+                <div class="slider-labels">
+                  <span class="s-label">Laju Akselerasi (accelRate)</span>
+                  <span class="s-val font-mono" id="valAccelRate">18 PWM / 5ms</span>
+                </div>
+                <input type="range" id="sliderAccelRate" min="2" max="100" value="18" step="1">
+                <div class="slider-hints">
+                  <span>Sangat Lembut (Smooth Launch)</span>
+                  <span>Agresif & Spontan</span>
+                </div>
+              </div>
+
+              <!-- Time to Full Speed Calculator -->
+              <div class="calc-box">
+                <div class="calc-item">
+                  <span class="calc-label">Waktu Tempuh 0 ➔ 255 PWM:</span>
+                  <span class="calc-val font-mono text-cyan" id="calcRampTime">~71 ms</span>
+                </div>
+                <div class="calc-item">
+                  <span class="calc-label">Karakter Robot:</span>
+                  <span class="calc-val" id="calcCharacter">Anti-Jengat Optimal (Roda depan menempel erat)</span>
+                </div>
+              </div>
+
+              <!-- Quick Presets -->
+              <div class="preset-buttons">
+                <span class="preset-lbl">Preset Cepat:</span>
+                <button class="btn btn-sm btn-chip" data-accel="10">Super Smooth (10)</button>
+                <button class="btn btn-sm btn-chip" data-accel="18">Standar Test (18)</button>
+                <button class="btn btn-sm btn-chip" data-accel="30">Kompetisi Lomba (30)</button>
+                <button class="btn btn-sm btn-chip" data-accel="50">Punchy (50)</button>
+                <button class="btn btn-sm btn-chip" data-accel="255">Instan / No Ramp (255)</button>
+              </div>
+
+              <!-- Emergency Reflex Note -->
+              <div class="info-alert">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span><strong>Catatan Reflex Garis:</strong> Ketika sensor garis putih mendeteksi tepi dohyo, sistem otomatis meng-override ramp menjadi <em>INSTANT REVERSE</em> (0ms delay) demi keselamatan agar robot tidak bablas jatuh keluar arena.</span>
+              </div>
+
+              <div class="action-row">
+                <button id="btnSaveAccelNVM" class="btn btn-primary">
+                  💾 Simpan accelRate ke NVM Robot
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Curve Canvas Visualization -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h2 class="card-heading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"></path><path d="M19 9l-5 5-4-4-3 3"></path></svg>
+                Visualisasi Kurva Respons Motor
+              </h2>
+              <button id="btnSimulateLaunch" class="btn btn-sm btn-outline-cyan">
+                Simulasi Launch (0 ➔ 255)
+              </button>
+            </div>
+            
+            <div class="canvas-wrapper">
+              <canvas id="curveCanvas" width="600" height="340"></canvas>
+            </div>
+
+            <div class="legend-row">
+              <div class="legend-item">
+                <span class="legend-color color-cyan"></span>
+                <span>Kurva Anti-Jengat (Ramped)</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-color color-red-dash"></span>
+                <span>Tanpa Ramp (Jengat / Wheelie)</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- PANEL 3: TUNING PARAMETER (NVM) -->
+      <div class="tab-panel" id="tab-tuning">
+        <div class="glass-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-heading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                Tuning Kecepatan Robot & Profil Mode
+              </h2>
+              <p class="card-desc">Ubah kecepatan motor di setiap manuver dan simpan permanen ke Non-Volatile Memory (NVM) ESP32.</p>
+            </div>
+
+            <!-- Profile Mode Switcher -->
+            <div class="mode-toggle-group">
+              <button class="btn-mode active" id="btnModeTest" data-mode="TEST">Mode TEST (Aman/Meja)</button>
+              <button class="btn-mode" id="btnModeComp" data-mode="COMPETITION">Mode COMPETITION (Full Power)</button>
+            </div>
+          </div>
+
+          <div class="tuning-grid">
+            
+            <!-- Group 1: Serang & Kejar -->
+            <div class="param-group">
+              <h3 class="group-title">🎯 Manuver Serang & Kejar (FSM ENGAGE)</h3>
+              
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneAttackFull">Attack Full (Maju Lurus Sergap)</label>
+                  <input type="number" id="tuneAttackFull" class="num-input font-mono" min="0" max="255" value="55">
+                </div>
+                <input type="range" id="rngAttackFull" min="0" max="255" value="55">
+                <span class="p-sub">PWM saat musuh tepat di sensor tengah (FC)</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneAttackOuter">Attack Outer (Roda Luar Serong)</label>
+                  <input type="number" id="tuneAttackOuter" class="num-input font-mono" min="0" max="255" value="50">
+                </div>
+                <input type="range" id="rngAttackOuter" min="0" max="255" value="50">
+                <span class="p-sub">Kecepatan roda luar saat membelok mengejar</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneAttackInner">Attack Inner (Roda Dalam Serong)</label>
+                  <input type="number" id="tuneAttackInner" class="num-input font-mono" min="0" max="255" value="45">
+                </div>
+                <input type="range" id="rngAttackInner" min="0" max="255" value="45">
+                <span class="p-sub">Kecepatan roda dalam agar belokan mulus</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneTurnInPlace">Turn In Place (Putar Cepat)</label>
+                  <input type="number" id="tuneTurnInPlace" class="num-input font-mono" min="0" max="255" value="90">
+                </div>
+                <input type="range" id="rngTurnInPlace" min="0" max="255" value="90">
+                <span class="p-sub">Putar di tempat saat lawan di sudut FL/FR/ML/MR</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneSearchSpin">Search Spin (Patroli Arena)</label>
+                  <input type="number" id="tuneSearchSpin" class="num-input font-mono" min="0" max="255" value="45">
+                </div>
+                <input type="range" id="rngSearchSpin" min="0" max="255" value="45">
+                <span class="p-sub">Kecepatan putar saat menyapu arena mencari lawan</span>
+              </div>
+            </div>
+
+            <!-- Group 2: Reflex Garis & Manuver Khusus -->
+            <div class="param-group">
+              <h3 class="group-title">🛡️ Reflex Garis & Manuver Khusus</h3>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneEdgeBackup">Edge Backup (Mundur Reflex Garis)</label>
+                  <input type="number" id="tuneEdgeBackup" class="num-input font-mono" min="0" max="255" value="80">
+                </div>
+                <input type="range" id="rngEdgeBackup" min="0" max="255" value="80">
+                <span class="p-sub">Daya mundur kilat saat menginjak garis putih</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneEdgeEvade">Edge Evade (Putar Jauhi Garis)</label>
+                  <input type="number" id="tuneEdgeEvade" class="num-input font-mono" min="0" max="255" value="70">
+                </div>
+                <input type="range" id="rngEdgeEvade" min="0" max="255" value="70">
+                <span class="p-sub">Putar arah menjauhi tepi dohyo setelah mundur</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneDodgeOuter">Dodge Outer (Manuver Start Mengelak)</label>
+                  <input type="number" id="tuneDodgeOuter" class="num-input font-mono" min="0" max="255" value="60">
+                </div>
+                <input type="range" id="rngDodgeOuter" min="0" max="255" value="60">
+                <span class="p-sub">Roda luar saat taktik flank/mengelak di awal</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneTiltEscape">Tilt Escape (Lepas dari Terangkat)</label>
+                  <input type="number" id="tuneTiltEscape" class="num-input font-mono" min="0" max="255" value="90">
+                </div>
+                <input type="range" id="rngTiltEscape" min="0" max="255" value="90">
+                <span class="p-sub">Mundur bertenaga saat blade terangkat blade lawan</span>
+              </div>
+
+              <div class="param-item">
+                <div class="p-header">
+                  <label for="tuneRearThreat">Rear Threat (Ancaman Bokong RR)</label>
+                  <input type="number" id="tuneRearThreat" class="num-input font-mono" min="0" max="255" value="70">
+                </div>
+                <input type="range" id="rngRearThreat" min="0" max="255" value="70">
+                <span class="p-sub">Maju sergap mendadak saat diserang dari belakang</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Action Footer -->
+          <div class="tuning-footer">
+            <button id="btnLoadNVM" class="btn btn-secondary">
+              🔄 Baca Ulang dari Robot
+            </button>
+            <button id="btnSaveAllNVM" class="btn btn-primary">
+              💾 Simpan Profil ke NVM Robot
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 4: RAW LOGS & TERMINAL -->
+      <div class="tab-panel" id="tab-console">
+        <div class="glass-card">
+          <div class="card-header">
+            <h2 class="card-heading">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              Raw Telemetry & CLI Stream
+            </h2>
+            <button id="btnClearLog" class="btn btn-sm btn-outline-cyan">Clear Terminal</button>
+          </div>
+          
+          <div class="terminal-window font-mono" id="terminalOutput">
+            <div class="term-line term-info">[SYSTEM] Selamat datang di Summobot V1 Tuning & Logging Studio.</div>
+            <div class="term-line term-info">[SYSTEM] Hubungkan robot via BLE atau kabel USB Serial untuk memulai.</div>
+          </div>
+
+          <div class="terminal-input-bar">
+            <input type="text" id="termCmdInput" class="term-input font-mono" placeholder="Ketik perintah JSON atau CLI (misal: help, dump, {\"cmd\":\"ping\"})...">
+            <button id="btnSendCmd" class="btn btn-primary">Kirim</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -38,10 +38,18 @@ static void initSensorPair(int idxFront, int idxExtra, gpio_num_t pin, uint8_t a
   if (sensors[idxFront].init()) {
     sensors[idxFront].setAddress(addr);
     sensors[idxFront].setDistanceMode(VL53L1X::Short);
+    
+    // Timing Budget 20ms (20000us)
     sensors[idxFront].setMeasurementTimingBudget(20000);
-    sensors[idxFront].setROISize(16, 8);
-    sensors[idxFront].setROICenter(60);
-    sensors[idxFront].startContinuous(20);
+    
+    // Gunakan SPAD optical center simetris (SPAD 199) agar tidak terpotong (clip) di sisi samping
+    sensors[idxFront].setROISize(16, 16);
+    sensors[idxFront].setROICenter(199);
+    
+    // Sesuai ST Datasheet UM2356: Inter-measurement period wajib >= TimingBudget + 4ms.
+    // Diberi 28ms agar internal calibration & DSP selesai sempurna tanpa interupsi
+    sensors[idxFront].startContinuous(28);
+    
     sensorReady[idxFront] = true;
     Serial.printf("[OK]   ToF %d-%s (I2C0, GPIO %d) aktif di 0x%02X\n", idxFront + 1, tofNames[idxFront], (int)pin, addr);
   } else {
@@ -58,9 +66,9 @@ static void initSensorPair(int idxFront, int idxExtra, gpio_num_t pin, uint8_t a
     sensors[idxExtra].setAddress(addr);
     sensors[idxExtra].setDistanceMode(VL53L1X::Short);
     sensors[idxExtra].setMeasurementTimingBudget(20000);
-    sensors[idxExtra].setROISize(16, 8);
-    sensors[idxExtra].setROICenter(60);
-    sensors[idxExtra].startContinuous(20);
+    sensors[idxExtra].setROISize(16, 16);
+    sensors[idxExtra].setROICenter(199);
+    sensors[idxExtra].startContinuous(28);
     sensorReady[idxExtra] = true;
     Serial.printf("[OK]   ToF %d-%s (I2C1, GPIO %d) aktif di 0x%02X\n", idxExtra + 1, tofNames[idxExtra], (int)pin, addr);
   } else {
@@ -96,6 +104,10 @@ void tofTask(void* pv) {
   // Tahap 3: Pin 32 -> Front-Right (0x2C di I2C0) & Mid-Left/Kiri (0x2C di I2C1)
   initSensorPair(TOF_FR, TOF_ML, PIN_XSHUT_FR_ML, 0x2C);
 
+  // Buffer filter kestabilan nilai sensor
+  static uint16_t stableDist[6] = { 0, 0, 0, 0, 0, 0 };
+  static uint8_t noTargetCount[6] = { 0, 0, 0, 0, 0, 0 };
+
   for (;;) {
     bool logging = g_state.logToF;
     uint8_t logMask = g_state.logTofMask;
@@ -112,32 +124,67 @@ void tofTask(void* pv) {
         continue;
       }
 
+      bool isReady = false;
       uint16_t raw_d = 0;
       bool timeout = false;
+      VL53L1X::RangeStatus status = VL53L1X::None;
 
+      // Sesuai ST Datasheet UM2356 Section 2.4:
+      // Hanya baca data register JIKA dataReady() bernilai true!
+      // Jika belum siap, pertahankan data terakhir agar nilai tidak drop/lompat ke nol
       if (i < 3) {
         // Sensor Depan (I2C0 - Wire)
-        raw_d = sensors[i].read(false);
-        timeout = sensors[i].timeoutOccurred();
+        isReady = sensors[i].dataReady();
+        if (isReady) {
+          raw_d = sensors[i].read(false);
+          timeout = sensors[i].timeoutOccurred();
+          status = sensors[i].ranging_data.range_status;
+        }
       } else {
-        // Sensor Samping & Belakang (I2C1 - Wire1)
-        if (g_wire1Mutex) xSemaphoreTake(g_wire1Mutex, portMAX_DELAY);
-        raw_d = sensors[i].read(false);
-        timeout = sensors[i].timeoutOccurred();
-        if (g_wire1Mutex) xSemaphoreGive(g_wire1Mutex);
+        // Sensor Samping & Belakang (I2C1 - Wire1) dengan proteksi Mutex terhadap IMU MPU6050
+        if (g_wire1Mutex && xSemaphoreTake(g_wire1Mutex, pdMS_TO_TICKS(12)) == pdTRUE) {
+          isReady = sensors[i].dataReady();
+          if (isReady) {
+            raw_d = sensors[i].read(false);
+            timeout = sensors[i].timeoutOccurred();
+            status = sensors[i].ranging_data.range_status;
+          }
+          xSemaphoreGive(g_wire1Mutex);
+        }
       }
 
-      uint16_t d = (timeout || raw_d < 1 || raw_d > 400) ? 0 : raw_d;
+      if (isReady) {
+        // Validasi status pengukuran sesuai Datasheet ST VL53L1X:
+        // Status 0: RangeValid, Status 3: RangeValidMinRangeClipped
+        // Status 1 (SigmaFail), 2 (SignalFail), 4 (OutOfBounds) adalah noise/pantulan lemah
+        bool isValid = (!timeout) &&
+                       (status == VL53L1X::RangeValid || status == VL53L1X::RangeValidMinRangeClipped) &&
+                       (raw_d >= 1 && raw_d <= 400);
+
+        if (isValid) {
+          noTargetCount[i] = 0;
+          // Exponential moving average filter ringan (alpha = 0.7 baru + 0.3 lama) untuk kestabilan milimeter
+          if (stableDist[i] == 0) {
+            stableDist[i] = raw_d;
+          } else {
+            stableDist[i] = (uint16_t)((raw_d * 7 + stableDist[i] * 3) / 10);
+          }
+        } else {
+          // Debounce 2 frame sebelum menyatakan objek benar-benar hilang (cegah flicker 1-frame dropout)
+          noTargetCount[i]++;
+          if (noTargetCount[i] >= 2) {
+            stableDist[i] = 0;
+          }
+        }
+      }
 
       portENTER_CRITICAL(&g_stateMux);
-      g_state.tofDist[i] = d;
+      g_state.tofDist[i] = stableDist[i];
       portEXIT_CRITICAL(&g_stateMux);
 
       if (logging && (logMask & (1 << i))) {
-        if (timeout) {
-          Serial.printf("%s:[TIMEOUT] | ", tofNames[i]);
-        } else if (raw_d > 0) {
-          Serial.printf("%s:%4u mm | ", tofNames[i], raw_d);
+        if (stableDist[i] > 0) {
+          Serial.printf("%s:%4u mm | ", tofNames[i], stableDist[i]);
         } else {
           Serial.printf("%s:   -   mm | ", tofNames[i]);
         }
@@ -153,6 +200,7 @@ void tofTask(void* pv) {
       Serial.println();
     }
 
-    vTaskDelay(pdMS_TO_TICKS(25)); // Interval pembacaan sensor (>= 20ms timing budget)
+    // Polling setiap 10ms agar responsif membaca sensor yang selesai tanpa jitter
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }

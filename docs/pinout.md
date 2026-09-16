@@ -50,7 +50,7 @@ Pin berikut dialokasikan khusus untuk sensor garis arena (Line IR) yang terhubun
 | Kategori / Modul | Sinyal | GPIO ESP32 | Sifat Pin | Status / Keterangan |
 | :--- | :---: | :---: | :---: | :--- |
 | **Line IR Depan-Kiri** | `LINE_FL` | **GPIO 34** | Input Only | Tidak ada pull-up internal; butuh external pull-up |
-| **Line IR Depan-Kanan** | `LINE_FR` | **GPIO 35** | Input Only | Tidak ada pull-up internal; butuh external pull-up |
+| **Line IR Depan-Kanan** | `LINE_FR` | **GPIO 23** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 35) |
 | **Line IR Belakang-Kiri**| `LINE_BL` | **GPIO 14** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 36) |
 | **Line IR Belakang-Kanan**| `LINE_BR`| **GPIO 13** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 39) |
 
@@ -67,7 +67,7 @@ Saat merancang pengkabelan dan PCB, perhatikan batasan perangkat keras ESP32:
 2. **Strapping Pins (Hati-hati terhadap level tegangan saat boot):**  
    **GPIO 0, 2, 12, 15** mempengaruhi bootloader ESP32. Pin-pin ini sengaja dihindari dari sinyal kritis.
 3. **Input-Only Pins (GPI):**  
-   **GPIO 34, 35** tidak memiliki sirkuit output dan tidak memiliki resistor pull-up/pull-down internal software. Sangat cocok digunakan untuk sensor input aktif seperti sensor garis IR dengan modul komparator eksternal.
+   **GPIO 34** tidak memiliki sirkuit output dan tidak memiliki resistor pull-up/pull-down internal software.
 4. **UART0:**  
    **GPIO 1 (TX0)** dan **GPIO 3 (RX0)** dicadangkan untuk USB-Serial Monitor / CLI non-blocking.
 
@@ -123,7 +123,7 @@ Firmware mengimplementasikan arsitektur *feature flags* (`feature_flags.h`) sehi
 ```cpp
 #define HAS_IMU        0  // 1 jika MPU6050 dipasang di I2C0 (0x68)
 #define HAS_EXTRA_TOF  0  // 1 jika 3 ToF samping/belakang dipasang di I2C1
-#define HAS_LINE_IR    0  // 1 jika 4 sensor garis IR dipasang di GPIO 34, 35, 14, 13
+#define HAS_LINE_IR    0  // 1 jika 4 sensor garis IR dipasang di GPIO 34, 23, 14, 13
 #define HAS_CUR_SENSE  0  // 1 jika ada modul current sensing untuk deteksi stall
 ```
 

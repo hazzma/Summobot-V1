@@ -6,7 +6,7 @@
 
 #if HAS_LINE_IR
 #define IR_FL GPIO_NUM_34
-#define IR_FR GPIO_NUM_35
+#define IR_FR GPIO_NUM_23
 #define IR_BL GPIO_NUM_14
 #define IR_BR GPIO_NUM_13
 

@@ -15,6 +15,33 @@ enum class SumoState {
 };
 
 static SumoState sumoState = SumoState::WAIT_START;
+static bool s_countdownActive = false;
+
+const char* getFsmStateName() {
+  if (nvm::loadMode() == OpMode::TEST) {
+    return "DATA_LOG (STANDBY)";
+  }
+  switch (sumoState) {
+    case SumoState::WAIT_START:    return "WAIT_START";
+    case SumoState::INITIAL_DODGE: return "DODGE";
+    case SumoState::ENGAGE:        return "ENGAGE";
+    default:                       return "IDLE";
+  }
+}
+
+void triggerCombatStart() {
+  nvm::saveMode(OpMode::SUMO);
+  sumoState = SumoState::INITIAL_DODGE;
+  s_countdownActive = false;
+  Serial.println("[FSM] Combat Start dipicu via Web Studio!");
+}
+
+void triggerCombatStop() {
+  motorhw::stopAll(true);
+  sumoState = SumoState::WAIT_START;
+  s_countdownActive = false;
+  Serial.println("[FSM] Combat Stop dipicu via Web Studio!");
+}
 
 // ---- Parameter Tuning (Sesuai FSD & Hasil Uji) ----
 #define ENEMY_MIN_MM          1
@@ -41,35 +68,35 @@ static bool handleEdge() {
 
   switch (mask) {
     case 0b0011: // Depan L & R terdeteksi (mundur penuh menjauhi garis)
-      motorhw::setLeft(-spd.edgeBackup); motorhw::setRight(-spd.edgeBackup);
+      motorhw::setImmediate(-spd.edgeBackup, -spd.edgeBackup);
       vTaskDelay(pdMS_TO_TICKS(90));
       break;
     case 0b0101: // Sisi kiri (FL + BL) terdeteksi -> pivot kanan menjauh
-      motorhw::setLeft(spd.edgeEvade); motorhw::setRight(-spd.edgeEvade * 2 / 3);
+      motorhw::setImmediate(spd.edgeEvade, -spd.edgeEvade * 2 / 3);
       vTaskDelay(pdMS_TO_TICKS(90));
       break;
     case 0b0110: // Sisi kanan (FR + BR) terdeteksi -> pivot kiri menjauh
-      motorhw::setLeft(-spd.edgeEvade * 2 / 3); motorhw::setRight(spd.edgeEvade);
+      motorhw::setImmediate(-spd.edgeEvade * 2 / 3, spd.edgeEvade);
       vTaskDelay(pdMS_TO_TICKS(90));
       break;
     case 0b0001: // Hanya depan-kiri -> mundur serong kanan
-      motorhw::setLeft(-spd.edgeBackup); motorhw::setRight(-spd.edgeBackup / 2);
+      motorhw::setImmediate(-spd.edgeBackup, -spd.edgeBackup / 2);
       vTaskDelay(pdMS_TO_TICKS(80));
       break;
     case 0b0010: // Hanya depan-kanan -> mundur serong kiri
-      motorhw::setLeft(-spd.edgeBackup / 2); motorhw::setRight(-spd.edgeBackup);
+      motorhw::setImmediate(-spd.edgeBackup / 2, -spd.edgeBackup);
       vTaskDelay(pdMS_TO_TICKS(80));
       break;
     case 0b0100: // Hanya belakang-kiri -> maju serong kanan
-      motorhw::setLeft(spd.edgeEvade); motorhw::setRight(spd.edgeEvade / 2);
+      motorhw::setImmediate(spd.edgeEvade, spd.edgeEvade / 2);
       vTaskDelay(pdMS_TO_TICKS(80));
       break;
     case 0b1000: // Hanya belakang-kanan -> maju serong kiri
-      motorhw::setLeft(spd.edgeEvade / 2); motorhw::setRight(spd.edgeEvade);
+      motorhw::setImmediate(spd.edgeEvade / 2, spd.edgeEvade);
       vTaskDelay(pdMS_TO_TICKS(80));
       break;
     default:
-      motorhw::setLeft(-spd.edgeBackup); motorhw::setRight(-spd.edgeBackup);
+      motorhw::setImmediate(-spd.edgeBackup, -spd.edgeBackup);
       vTaskDelay(pdMS_TO_TICKS(80));
       break;
   }
@@ -234,8 +261,6 @@ void fsmTask(void* pv) {
 
   static int lastTurnDir = -1; // -1 = kiri, 1 = kanan
 
-  // State hitung mundur saat Cytron disabled
-  static bool countdownActive = false;
   static unsigned long countdownStart = 0;
   static int lastCountSecond = -1;
 
@@ -249,7 +274,7 @@ void fsmTask(void* pv) {
         wasSumo = false;
       }
       sumoState = SumoState::WAIT_START;
-      countdownActive = false;
+      s_countdownActive = false;
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -291,8 +316,8 @@ void fsmTask(void* pv) {
           }
         } else {
           // Cytron Dinonaktifkan: Hitung mundur aman 5 detik
-          if (!countdownActive) {
-            countdownActive = true;
+          if (!s_countdownActive) {
+            s_countdownActive = true;
             countdownStart = millis();
             lastCountSecond = -1;
             Serial.println("\n[START] Cytron DISABLED. Memulai hitung mundur 5 detik...");
@@ -311,7 +336,7 @@ void fsmTask(void* pv) {
           }
 
           if (elapsed >= 5000) {
-            countdownActive = false;
+            s_countdownActive = false;
             sumoState = SumoState::INITIAL_DODGE;
             dodgeTimedStart = millis();
 #if HAS_IMU

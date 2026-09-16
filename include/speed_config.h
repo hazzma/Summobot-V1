@@ -34,6 +34,9 @@ struct SpeedProfile {
   int16_t rearThreat;      // Maju sergap saat bokong diserang lawan (ToF Belakang)
   int16_t sideEvade;       // Putar balik saat sisi diserang mendadak (ToF ML/MR)
   int16_t pushbackJink;    // Manuver jink/slip out saat adu banteng didorong mundur
+
+  // --- KURVA AKSELERASI (ANTI-JENGAT) ---
+  int16_t accelRate;       // Laju ramp PWM per 5ms (0 / 255 = instan; 5-50 = halus, no wheelie)
 };
 
 // ============================================================================
@@ -57,7 +60,8 @@ constexpr SpeedProfile PROFILE_TEST = {
   .tiltEscape   = 90,   // ~35% PWM
   .rearThreat   = 70,   // ~27% PWM
   .sideEvade    = 60,   // ~23% PWM
-  .pushbackJink = 70    // ~27% PWM
+  .pushbackJink = 70,   // ~27% PWM
+  .accelRate    = 18    // ~18 PWM per 5ms (smooth anti-jengat ramp)
 };
 
 // ============================================================================
@@ -81,10 +85,14 @@ constexpr SpeedProfile PROFILE_COMPETITION = {
   .tiltEscape   = 255,  // 100% PWM (Lepaskan diri seketika saat diangkat)
   .rearThreat   = 255,  // 100% PWM (Kabur / tabrak balik)
   .sideEvade    = 180,  // ~70% PWM
-  .pushbackJink = 210   // ~82% PWM (Slip-out dorongan lawan)
+  .pushbackJink = 210,  // ~82% PWM (Slip-out dorongan lawan)
+  .accelRate    = 40    // ~40 PWM per 5ms (fast punchy ramp)
 };
 
 // API Akses Profil Kecepatan Aktif
 void setSpeedMode(SpeedMode mode);
 SpeedMode getSpeedMode();
 const SpeedProfile& getSpeedProfile();
+SpeedProfile& getSpeedProfileWritable(SpeedMode mode);
+void updateSpeedProfile(SpeedMode mode, const SpeedProfile& prof);
+void initSpeedProfilesFromNVM();

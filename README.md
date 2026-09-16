@@ -14,11 +14,11 @@ Firmware otonom robot **Sumo 500g (Summobot V1)** berbasis mikrokontroler **ESP3
 |---|:---:|:---:|:---:|---|
 | **Cytron IR Start Module** | `IR_START` | **GPIO 4** | Digital In (Pull-up) | **Active-LOW** (Debounced 20ms). Menunggu trigger remote wasit / start tombol. |
 | **Line IR Depan-Kiri (FL)** | `LINE_FL` | **GPIO 34** | Input Only (GPI) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis depan-kiri. |
-| **Line IR Depan-Kanan (FR)** | `LINE_FR` | **GPIO 35** | Input Only (GPI) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis depan-kanan. |
+| **Line IR Depan-Kanan (FR)** | `LINE_FR` | **GPIO 23** | Digital In (Pull-up) | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis depan-kanan (dipindah dari GPIO 35). |
 | **Line IR Belakang-Kiri (BL)** | `LINE_BL` | **GPIO 14** | Digital In | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis belakang-kiri (dipindah dari GPIO 36). |
 | **Line IR Belakang-Kanan (BR)**| `LINE_BR` | **GPIO 13** | Digital In | **Active-LOW** (0 = garis putih terdeteksi). Sudut sasis belakang-kanan (dipindah dari GPIO 39). |
 
-> *Catatan Sensor Garis:* GPIO 34 & 35 merupakan pin *Input-Only* (GPI, butuh modul komparator eksternal), sedangkan GPIO 14 & 13 merupakan pin GPIO standar dengan dukungan internal pull-up.
+> *Catatan Sensor Garis:* GPIO 34 merupakan pin *Input-Only* (GPI, butuh modul komparator eksternal), sedangkan GPIO 23, 14 & 13 merupakan pin GPIO standar dengan dukungan internal pull-up.
 
 ---
 
@@ -171,3 +171,11 @@ pio run --target upload
 # Buka Serial Monitor
 pio device monitor -b 115200
 ```
+
+---
+
+## 📚 Dokumentasi Terkait
+* [**Pinout Lengkap Hardware**](docs/pinout.md) — Alokasi pin GPIO, bus I2C ganda, dan strapping pins.
+* [**Logika Operasional & State Machine**](docs/logic.md) — Hierarki prioritas reaksi, truth table ToF, FSM pertempuran, dan batas numerik (*thresholds*).
+* [**Functional Specification Document (FSD)**](fsd.md) — Spesifikasi arsitektur firmware mendalam.
+

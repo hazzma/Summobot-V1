@@ -8,7 +8,7 @@ void motorTask(void* pv) {
   for (;;) {
     // Pada mode TEST, motorTask mengonsumsi perintah dari antrean CLI
     if (cliCommandQueue != nullptr &&
-        xQueueReceive(cliCommandQueue, &cmd, pdMS_TO_TICKS(5)) == pdTRUE) {
+        xQueueReceive(cliCommandQueue, &cmd, 0) == pdTRUE) {
       switch (cmd.type) {
         case CmdType::MOTOR_FWD:
           if (cmd.motorId == 1) motorhw::setLeft(cmd.speed);
@@ -21,13 +21,15 @@ void motorTask(void* pv) {
           else if (cmd.motorId == 3) { motorhw::setLeft(-cmd.speed); motorhw::setRight(-cmd.speed); }
           break;
         case CmdType::MOTOR_STOP:
-          motorhw::stopAll();
+          motorhw::stopAll(true);
           break;
         default:
           break; // Perintah non-motor diabaikan di sini
       }
-    } else {
-      vTaskDelay(pdMS_TO_TICKS(2));
     }
+
+    // Update kurva akselerasi motor secara berkala (~200 Hz / tiap 5ms)
+    motorhw::updateRamp();
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
