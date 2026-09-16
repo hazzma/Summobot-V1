@@ -91,6 +91,7 @@ static bool readMPURaw(int16_t &ax, int16_t &ay, int16_t &az,
 void imuTask(void* pv) {
 #if HAS_IMU
   Wire1.begin(SDA1_PIN, SCL1_PIN, 400000);
+  Wire1.setTimeOut(10);
   delay(50);
 
   if (!checkAndInitMPU()) {
@@ -218,7 +219,7 @@ void imuTask(void* pv) {
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(5)); // ~200 Hz loop
+    vTaskDelay(pdMS_TO_TICKS(20)); // ~50 Hz loop (Beri ruang idle I2C1 untuk ToF ML, MR, RR)
   }
 #else
   unsigned long lastWarn = 0;

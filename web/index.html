@@ -85,6 +85,19 @@
           </svg>
           Tuning Parameter (NVM)
         </button>
+        <button class="nav-tab" data-tab="tab-blackbox">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+            <line x1="7" y1="2" x2="7" y2="22"></line>
+            <line x1="17" y1="2" x2="17" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="2" y1="7" x2="7" y2="7"></line>
+            <line x1="2" y1="17" x2="7" y2="17"></line>
+            <line x1="17" y1="17" x2="22" y2="17"></line>
+            <line x1="17" y1="7" x2="22" y2="7"></line>
+          </svg>
+          Blackbox Flash Logger
+        </button>
         <button class="nav-tab" data-tab="tab-console">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="4 17 10 11 4 5"></polyline>
@@ -202,6 +215,15 @@
           <span>FSM State & Motor PWM</span>
         </label>
 
+        <div class="live-toggle-container" style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);">
+          <label class="custom-checkbox">
+            <input type="checkbox" id="chkLiveStream" checked>
+            <span class="checkmark"></span>
+            <span style="font-weight:600; color:var(--accent-cyan);">Live Stream Telemetri</span>
+          </label>
+          <span style="margin-left:26px; display:block; font-size:10px; color:var(--text-muted);">(Matikan saat tanding agar hemat BLE & bebas delay)</span>
+        </div>
+
         <div class="stream-rate-container">
           <label for="streamHz">Frekuensi Update:</label>
           <div class="hz-selector">
@@ -240,6 +262,10 @@
           <span class="stat-name">Tilt Warning</span>
           <span class="stat-badge stat-green" id="statTilt">NORMAL</span>
         </div>
+        <div class="stat-row">
+          <span class="stat-name">Blackbox Flash</span>
+          <span class="stat-badge" id="statBlackbox">STANDBY</span>
+        </div>
       </div>
     </aside>
 
@@ -247,6 +273,24 @@
     <section class="content-panels">
       <!-- PANEL 1: LIVE TELEMETRY & KALIBRASI -->
       <div class="tab-panel active" id="tab-telemetry">
+        <!-- Blackbox Flight Recorder Quick Bar -->
+        <div class="glass-card blackbox-quick-banner">
+          <div class="quick-banner-left">
+            <div class="rec-badge" id="quickRecBadge">
+              <span class="status-dot"></span>
+              <span id="quickRecText">BLACKBOX: STANDBY</span>
+            </div>
+            <div class="quick-banner-info">
+              <strong>Blackbox Flash Data Logger:</strong> Rekam data sensor & pergerakan motor di memori Flash ESP32 (0ms delay, tanpa lag jaringan BLE saat bertanding).
+            </div>
+          </div>
+          <div class="quick-banner-actions">
+            <button id="btnQuickLogStart" class="btn btn-sm btn-danger">🔴 Mulai Rekam</button>
+            <button id="btnQuickLogStop" class="btn btn-sm btn-secondary" disabled>⏹️ Stop & Simpan</button>
+            <button id="btnQuickLogFetch" class="btn btn-sm btn-primary">📥 Tarik Data Log</button>
+          </div>
+        </div>
+
         <div class="panel-grid-2">
           
           <!-- 4x IR LINE CALIBRATION & SENSORS -->
@@ -652,6 +696,129 @@
             <button id="btnSaveAllNVM" class="btn btn-primary">
               💾 Simpan Profil ke NVM Robot
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 3: BLACKBOX FLASH DATA LOGGER -->
+      <div class="tab-panel" id="tab-blackbox">
+        <!-- Controls & Summary Card -->
+        <div class="glass-card blackbox-main-card">
+          <div class="blackbox-header-row">
+            <div>
+              <h2 class="card-heading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                  <line x1="7" y1="2" x2="7" y2="22"></line>
+                  <line x1="17" y1="2" x2="17" y2="22"></line>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <line x1="2" y1="7" x2="7" y2="7"></line>
+                  <line x1="2" y1="17" x2="7" y2="17"></line>
+                  <line x1="17" y1="17" x2="22" y2="17"></line>
+                  <line x1="17" y1="7" x2="22" y2="7"></line>
+                </svg>
+                Blackbox Flight Recorder (Flash Data Logger)
+              </h2>
+              <p class="card-desc">
+                Perekaman telemetri lokal di RAM & Flash SPIFFS ESP32 (laju presisi 20 Hz / tiap 50ms). <strong>Bebas beban transmisi live BLE</strong> saat robot beradu cepat di arena. Klik <strong>Mulai Rekam</strong>, biarkan bertanding, lalu klik <strong>Tarik Data Log</strong>.
+              </p>
+            </div>
+            <div class="blackbox-badge" id="blackboxMainBadge">
+              <span class="status-dot"></span>
+              <span id="blackboxMainBadgeText">STANDBY</span>
+            </div>
+          </div>
+
+          <!-- Action Control Buttons -->
+          <div class="blackbox-actions-row">
+            <button id="btnLogStart" class="btn btn-danger">
+              🔴 Mulai Rekam (Start)
+            </button>
+            <button id="btnLogStop" class="btn btn-secondary" disabled>
+              ⏹️ Berhenti Rekam & Simpan ke Flash
+            </button>
+            <button id="btnLogFetch" class="btn btn-primary">
+              📥 Tarik Data Log (Download dari Flash)
+            </button>
+            <button id="btnLogExportCsv" class="btn btn-outline-cyan" disabled>
+              💾 Export CSV (Excel)
+            </button>
+            <button id="btnLogClear" class="btn btn-danger-outline">
+              🗑️ Hapus Log Flash
+            </button>
+          </div>
+
+          <!-- Summary Metric Cards -->
+          <div class="blackbox-metrics-grid">
+            <div class="bb-metric-item">
+              <span class="bb-metric-label">Total Baris Data</span>
+              <span class="bb-metric-value" id="bbMetricCount">0 baris</span>
+            </div>
+            <div class="bb-metric-item">
+              <span class="bb-metric-label">Durasi Match</span>
+              <span class="bb-metric-value text-cyan" id="bbMetricDuration">0.00 s</span>
+            </div>
+            <div class="bb-metric-item">
+              <span class="bb-metric-label">Kecepatan Puncak (L / R)</span>
+              <span class="bb-metric-value text-accent" id="bbMetricMaxPwm">0% / 0%</span>
+            </div>
+            <div class="bb-metric-item">
+              <span class="bb-metric-label">Deteksi Musuh (ToF)</span>
+              <span class="bb-metric-value text-yellow" id="bbMetricEnemyCount">0 kali</span>
+            </div>
+            <div class="bb-metric-item">
+              <span class="bb-metric-label">Sentuh Garis Putih (IR)</span>
+              <span class="bb-metric-value text-danger" id="bbMetricEdgeCount">0 kali</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Scrubber & Timeline Table Card -->
+        <div class="glass-card blackbox-table-card">
+          <div class="table-card-header">
+            <div>
+              <h3 class="table-card-title">Riwayat Telemetri Pertarungan Detik Demi Detik</h3>
+              <span class="table-card-sub">Menampilkan kapan motor bergerak, berapa cepat PWM-nya, dan apa yang dibaca sensor saat itu.</span>
+            </div>
+            <div class="filter-btn-group">
+              <span class="filter-caption">Filter:</span>
+              <button class="filter-pill active" data-filter="all">Semua Data</button>
+              <button class="filter-pill" data-filter="enemy">🎯 Musuh Terdeteksi</button>
+              <button class="filter-pill" data-filter="edge">⚪ Kena Garis</button>
+              <button class="filter-pill" data-filter="motor">⚡ Motor Gerak</button>
+            </div>
+          </div>
+
+          <!-- Scrubber Timeline Slider -->
+          <div class="bb-scrubber-box">
+            <div class="scrubber-legend">
+              <span>Waktu Saat Ini: <strong id="scrubberCurrentTime" class="text-cyan">0.00s</strong></span>
+              <span id="scrubberStateSummary" class="text-muted">Arah & Kecepatan: Diam</span>
+            </div>
+            <input type="range" id="bbScrubberSlider" min="0" max="0" value="0" class="bb-range-slider" disabled>
+          </div>
+
+          <!-- Table Container -->
+          <div class="bb-table-scroll font-mono">
+            <table class="bb-data-table" id="tableBlackbox">
+              <thead>
+                <tr>
+                  <th style="width:105px;">Waktu (Kapan)</th>
+                  <th style="width:115px;">FSM State</th>
+                  <th style="min-width:210px;">Motor Kiri & Kanan (Berapa Cepat)</th>
+                  <th style="width:175px;">Sensor Garis (4x IR)</th>
+                  <th style="min-width:280px;">Sensor Jarak (6x ToF VL53L1X)</th>
+                  <th style="width:170px;">IMU Kemiringan</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyBlackbox">
+                <tr>
+                  <td colspan="6" class="bb-table-empty">
+                    Belum ada data log yang dimuat. Klik tombol <strong>"📥 Tarik Data Log"</strong> untuk mengambil data dari Flash ESP32.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

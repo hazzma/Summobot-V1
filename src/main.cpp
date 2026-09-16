@@ -9,6 +9,7 @@
 #include "cli.h"
 #include "ble_task.h"
 #include "speed_config.h"
+#include "data_logger.h"
 
 void setup() {
   // Inisialisasi Serial UART0 untuk debug dan interaktif CLI non-blocking
@@ -17,10 +18,14 @@ void setup() {
   // Muat profil kecepatan dan parameter NVM yang tersimpan
   initSpeedProfilesFromNVM();
 
+  // Inisialisasi Flash Data Logger (Blackbox)
+  dataLogger::init();
+
   // Buat antrean perintah sistem/CLI dan mutex I2C1
   cliCommandQueue = xQueueCreate(16, sizeof(SysCmd));
   g_wire1Mutex = xSemaphoreCreateMutex();
   Wire1.begin(18, 19, 400000); // SDA1: GPIO 18, SCL1: GPIO 19 (Shared MPU6050 & Extra ToF)
+  Wire1.setTimeOut(10);
 
   Serial.println("\n[SYSTEM] Menginisialisasi FreeRTOS Tasks...");
 

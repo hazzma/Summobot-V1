@@ -6,6 +6,7 @@
 #include "shared_state.h"
 #include "tof_task.h"
 #include "speed_config.h"
+#include "data_logger.h"
 
 enum class CliScreen {
   HOME,
@@ -37,6 +38,7 @@ static void printHome() {
   Serial.printf("Profil Kecepatan      : %s\n", spd.name);
   Serial.printf("Fitur Algoritma Gyro  : %s\n", gyroEn ? "ENABLED (Dodge 45 deg + Tilt Protect)" : "DISABLED (Murni 6x ToF Tracking)");
   Serial.printf("Cytron IR Start Modul : %s\n", cytronEn ? "ENABLED (GPIO 4 Active-LOW)" : "DISABLED (5s Auto-Countdown)");
+  Serial.printf("Blackbox Data Logger  : %s (%d sampel)\n", dataLogger::isLogging() ? "SEDANG REKAM [MERAH]" : "STANDBY", dataLogger::getCount());
   Serial.println("--------------------------------------------");
   Serial.println("[1] Aktifkan SUMO Mode");
   Serial.println("[2] Masuk ke TEST Mode (Sensor & Motor Test)");
@@ -44,6 +46,9 @@ static void printHome() {
   Serial.println("[4] Ganti Profil Kecepatan (TEST <-> COMPETITION)");
   Serial.println("[5] Lihat Detail Parameter Tuning Kecepatan");
   Serial.println("[6] Toggle Fitur Algoritma Gyro (ON/OFF)");
+  Serial.println("[7] Mulai / Berhenti Rekam Blackbox (Flash)");
+  Serial.println("[8] Tarik / Dump Log CSV ke Serial Monitor");
+  Serial.println("[9] Hapus Log Flash (/blackbox.csv)");
   Serial.print("> ");
 }
 
@@ -138,6 +143,33 @@ static void handleLine(const char* line) {
         nvm::setGyroEnabled(newState);
         Serial.printf("\n[NVS] Fitur Algoritma Gyro diubah menjadi: %s\n",
                       newState ? "ENABLED (Dodge 45 deg + Tilt Protect Aktif)" : "DISABLED (Murni 6x ToF & Line IR Tracking)");
+      } else if (line[0] == '7') {
+        if (dataLogger::isLogging()) {
+          dataLogger::stop();
+          Serial.printf("\n[LOG] Perekaman dihentikan & disimpan ke Flash. Total: %d sampel.\n", dataLogger::getCount());
+        } else {
+          dataLogger::start();
+          Serial.println("\n[LOG] Perekaman Blackbox DIMULAI.");
+        }
+      } else if (line[0] == '8') {
+        if (dataLogger::isLogging()) dataLogger::stop();
+        if (dataLogger::getCount() == 0 && dataLogger::hasFlashData()) dataLogger::loadFromFlash();
+        uint16_t cnt = dataLogger::getCount();
+        Serial.printf("\n=== DUMP BLACKBOX LOG (%u sampel) ===\n", cnt);
+        Serial.println("ms,state,pwmL,pwmR,edge,fl,fc,fr,ml,mr,rr,pitch,roll,accel");
+        for (uint16_t i = 0; i < cnt; i++) {
+          LogSample s;
+          if (dataLogger::getSample(i, s)) {
+            Serial.printf("%lu,%u,%d,%d,%u,%u,%u,%u,%u,%u,%u,%d,%d,%d\n",
+                          (unsigned long)s.tMs, s.stateId, s.pwmL, s.pwmR, s.edgeMask,
+                          s.tof[0], s.tof[1], s.tof[2], s.tof[3], s.tof[4], s.tof[5],
+                          s.pitch, s.roll, s.accel);
+          }
+        }
+        Serial.println("=== AKHIR DUMP LOG ===");
+      } else if (line[0] == '9') {
+        dataLogger::clear();
+        Serial.println("\n[LOG] Log di Flash berhasil dihapus.");
       }
       printHome();
       break;

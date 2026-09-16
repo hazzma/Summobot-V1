@@ -28,6 +28,15 @@ let currentCombatLevel = 'TEST'; // 'TEST' | 'COMPETITION'
 let currentTuningMode = 'TEST'; // 'TEST' | 'COMPETITION'
 let isGyroEnabled = true;
 
+// Blackbox Flight Recorder (Flash Logger) State
+let isBlackboxRecording = false;
+let blackboxSampleCount = 0;
+let hasFlashLogData = false;
+let blackboxData = [];
+let blackboxExpectedTotal = 0;
+let activeLogFilter = 'all';
+let isLiveStreamActive = true;
+
 // Active Profiles Cache (Default fallbacks matching firmware)
 const profiles = {
   TEST: {
@@ -52,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initOpModeControls();
   initCurveCanvas();
   initTuningControls();
+  initBlackboxControls();
   initConnectionButtons();
   initTerminal();
   updateCurveStats();
@@ -492,6 +502,47 @@ function handlePacket(pkt) {
     if (pkt.m && pkt.m.length >= 2) {
       document.getElementById('statMotor').textContent = `${pkt.m[0]} / ${pkt.m[1]}`;
     }
+
+    // 7. Status Blackbox Flash Logger
+    if (pkt.logRec !== undefined) {
+      updateBlackboxStatus(pkt.logRec, pkt.logCnt || 0, pkt.logFlash || false);
+    }
+  } else if (pkt.t === 'log_status') {
+    updateBlackboxStatus(pkt.recording, pkt.count || 0, pkt.hasFlash || pkt.saved || false);
+    if (pkt.saved) {
+      logTerminal(`💾 [BLACKBOX] Rekaman berhasil disimpan ke Flash (${pkt.count} baris).`, 'term-tx');
+    }
+    if (pkt.cleared) {
+      logTerminal('🗑️ [BLACKBOX] File log /blackbox.csv di Flash telah dihapus.', 'term-info');
+      blackboxData = [];
+      renderBlackboxTable();
+      updateBlackboxMetrics();
+    }
+  } else if (pkt.t === 'log_start') {
+    blackboxData = [];
+    blackboxExpectedTotal = pkt.total || 0;
+    logTerminal(`📥 [BLACKBOX] Mulai mengunduh ${pkt.total} data log dari Flash...`, 'term-info');
+    updateFetchProgress(0, pkt.total);
+  } else if (pkt.t === 'log_data') {
+    if (Array.isArray(pkt.rows)) {
+      for (const r of pkt.rows) {
+        blackboxData.push({
+          tMs: r[0],
+          stateId: r[1],
+          pwmL: r[2],
+          pwmR: r[3],
+          edgeMask: r[4],
+          tof: [r[5], r[6], r[7], r[8], r[9], r[10]],
+          pitch: (r[11] || 0) / 10.0,
+          roll: (r[12] || 0) / 10.0,
+          accel: (r[13] || 0) / 100.0
+        });
+      }
+      updateFetchProgress(blackboxData.length, blackboxExpectedTotal);
+    }
+  } else if (pkt.t === 'log_end') {
+    logTerminal(`✅ [BLACKBOX] Pengunduhan data log selesai! Total: ${blackboxData.length} baris.`, 'term-tx');
+    finishLogFetch();
   } else if (pkt.t === 'profile') {
     if (pkt.gyroEn !== undefined) {
       updateGyroLogicUI(pkt.gyroEn);
@@ -931,4 +982,457 @@ function logTerminal(msg, cssClass = 'term-rx') {
   if (term.childNodes.length > 200) {
     term.removeChild(term.firstChild);
   }
+}
+
+// ============================================================================
+// Blackbox Flight Recorder (Flash Data Logger) Functions
+// ============================================================================
+const LOG_STATE_NAMES = [
+  'WAIT_START',
+  'DODGE',
+  'SEARCH',
+  'TRACK',
+  'ATTACK',
+  'EDGE_EVADE',
+  'PUSHBACK',
+  'TILT_ESCAPE',
+  'DATA_STANDBY'
+];
+
+function initBlackboxControls() {
+  // Main Panel Buttons
+  const btnStart = document.getElementById('btnLogStart');
+  const btnStop = document.getElementById('btnLogStop');
+  const btnFetch = document.getElementById('btnLogFetch');
+  const btnExport = document.getElementById('btnLogExportCsv');
+  const btnClear = document.getElementById('btnLogClear');
+
+  // Quick Banner Buttons
+  const btnQuickStart = document.getElementById('btnQuickLogStart');
+  const btnQuickStop = document.getElementById('btnQuickLogStop');
+  const btnQuickFetch = document.getElementById('btnQuickLogFetch');
+
+  // Live Stream Toggle Checkbox
+  const chkLive = document.getElementById('chkLiveStream');
+
+  // Start Logging
+  const onStart = () => {
+    sendData(JSON.stringify({ cmd: 'log_start' }) + '\n');
+    logTerminal('🔴 [BLACKBOX] Perintah Mulai Rekam dikirim!', 'term-tx');
+  };
+  if (btnStart) btnStart.addEventListener('click', onStart);
+  if (btnQuickStart) btnQuickStart.addEventListener('click', onStart);
+
+  // Stop Logging
+  const onStop = () => {
+    sendData(JSON.stringify({ cmd: 'log_stop' }) + '\n');
+    logTerminal('⏹️ [BLACKBOX] Perintah Berhenti Rekam & Simpan dikirim!', 'term-tx');
+  };
+  if (btnStop) btnStop.addEventListener('click', onStop);
+  if (btnQuickStop) btnQuickStop.addEventListener('click', onStop);
+
+  // Fetch Log Data
+  const onFetch = () => {
+    sendData(JSON.stringify({ cmd: 'log_fetch' }) + '\n');
+    logTerminal('📥 [BLACKBOX] Meminta pengiriman data log dari Flash ESP32...', 'term-tx');
+    // Buka otomatis tab blackbox agar pengguna langsung melihat tabel
+    const bbTabBtn = document.querySelector('.nav-tab[data-tab="tab-blackbox"]');
+    if (bbTabBtn) bbTabBtn.click();
+  };
+  if (btnFetch) btnFetch.addEventListener('click', onFetch);
+  if (btnQuickFetch) btnQuickFetch.addEventListener('click', onFetch);
+
+  // Export CSV
+  if (btnExport) {
+    btnExport.addEventListener('click', exportBlackboxCsv);
+  }
+
+  // Clear Flash Log
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      if (confirm('Yakin ingin menghapus seluruh rekaman log di Flash ESP32?')) {
+        sendData(JSON.stringify({ cmd: 'log_clear' }) + '\n');
+        logTerminal('🗑️ [BLACKBOX] Perintah Hapus Log Flash dikirim!', 'term-tx');
+      }
+    });
+  }
+
+  // Live Telemetry Toggle
+  if (chkLive) {
+    chkLive.addEventListener('change', (e) => {
+      isLiveStreamActive = e.target.checked;
+      sendData(JSON.stringify({ cmd: 'stream', live: isLiveStreamActive }) + '\n');
+      logTerminal(`📡 [TELEMETRI] Live Streaming diubah ke: ${isLiveStreamActive ? 'AKTIF' : 'NONAKTIF (HEMAT BLE)'}`, 'term-info');
+    });
+  }
+
+  // Filter Buttons
+  const filterPills = document.querySelectorAll('.filter-pill');
+  filterPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      filterPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      activeLogFilter = pill.getAttribute('data-filter') || 'all';
+      renderBlackboxTable();
+    });
+  });
+
+  // Scrubber Slider
+  const slider = document.getElementById('bbScrubberSlider');
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.value, 10) || 0;
+      scrubToRow(idx);
+    });
+  }
+}
+
+function updateBlackboxStatus(isRecording, count, hasFlash) {
+  isBlackboxRecording = !!isRecording;
+  blackboxSampleCount = count || 0;
+  hasFlashLogData = !!hasFlash;
+
+  // Update Main Badge
+  const mainBadge = document.getElementById('blackboxMainBadge');
+  const mainBadgeText = document.getElementById('blackboxMainBadgeText');
+  if (mainBadge && mainBadgeText) {
+    if (isBlackboxRecording) {
+      mainBadge.className = 'blackbox-badge recording';
+      mainBadgeText.textContent = `MEREKAM KE FLASH (${blackboxSampleCount} pts)`;
+    } else if (hasFlashLogData) {
+      mainBadge.className = 'blackbox-badge has-flash';
+      mainBadgeText.textContent = `DATA FLASH TERSEDIA (${blackboxSampleCount} pts)`;
+    } else {
+      mainBadge.className = 'blackbox-badge';
+      mainBadgeText.textContent = 'STANDBY';
+    }
+  }
+
+  // Update Quick Badge
+  const qBadge = document.getElementById('quickRecBadge');
+  const qText = document.getElementById('quickRecText');
+  if (qBadge && qText) {
+    if (isBlackboxRecording) {
+      qBadge.className = 'rec-badge recording';
+      qText.textContent = `REKAM FLASH (${blackboxSampleCount})`;
+    } else if (hasFlashLogData) {
+      qBadge.className = 'rec-badge has-flash';
+      qText.textContent = `FLASH LOG (${blackboxSampleCount})`;
+    } else {
+      qBadge.className = 'rec-badge';
+      qText.textContent = 'BLACKBOX: STANDBY';
+    }
+  }
+
+  // Update Sidebar Stat
+  const statBb = document.getElementById('statBlackbox');
+  if (statBb) {
+    if (isBlackboxRecording) {
+      statBb.textContent = `REKAM (${blackboxSampleCount})`;
+      statBb.className = 'stat-badge stat-err';
+    } else if (hasFlashLogData) {
+      statBb.textContent = `FLASH (${blackboxSampleCount})`;
+      statBb.className = 'stat-badge stat-cyan';
+    } else {
+      statBb.textContent = 'STANDBY';
+      statBb.className = 'stat-badge stat-green';
+    }
+  }
+
+  // Update Button States
+  const btnStart = document.getElementById('btnLogStart');
+  const btnStop = document.getElementById('btnLogStop');
+  const btnQuickStart = document.getElementById('btnQuickLogStart');
+  const btnQuickStop = document.getElementById('btnQuickLogStop');
+
+  if (btnStart) btnStart.disabled = isBlackboxRecording;
+  if (btnQuickStart) btnQuickStart.disabled = isBlackboxRecording;
+  if (btnStop) btnStop.disabled = !isBlackboxRecording;
+  if (btnQuickStop) btnQuickStop.disabled = !isBlackboxRecording;
+}
+
+function updateFetchProgress(current, total) {
+  const tbody = document.getElementById('tbodyBlackbox');
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="bb-table-empty">
+          <div style="font-weight:700; color:var(--accent-cyan); margin-bottom:6px;">
+            📥 Sedang Mengunduh Data dari Flash ESP32: ${current} / ${total || '?'} baris...
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-secondary);">
+            Mohon tunggu sebentar, data sedang ditransfer via BLE/Serial.
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+}
+
+function finishLogFetch() {
+  updateBlackboxMetrics();
+  renderBlackboxTable();
+
+  // Setup Scrubber Slider
+  const slider = document.getElementById('bbScrubberSlider');
+  if (slider) {
+    if (blackboxData.length > 0) {
+      slider.disabled = false;
+      slider.min = 0;
+      slider.max = blackboxData.length - 1;
+      slider.value = 0;
+      scrubToRow(0);
+    } else {
+      slider.disabled = true;
+    }
+  }
+
+  // Enable Export CSV Button
+  const btnExport = document.getElementById('btnLogExportCsv');
+  if (btnExport) {
+    btnExport.disabled = (blackboxData.length === 0);
+  }
+}
+
+function updateBlackboxMetrics() {
+  const countEl = document.getElementById('bbMetricCount');
+  const durEl = document.getElementById('bbMetricDuration');
+  const speedEl = document.getElementById('bbMetricMaxPwm');
+  const enemyEl = document.getElementById('bbMetricEnemyCount');
+  const edgeEl = document.getElementById('bbMetricEdgeCount');
+
+  const total = blackboxData.length;
+  if (countEl) countEl.textContent = `${total} baris`;
+
+  if (total === 0) {
+    if (durEl) durEl.textContent = '0.00 s';
+    if (speedEl) speedEl.textContent = '0% / 0%';
+    if (enemyEl) enemyEl.textContent = '0 kali';
+    if (edgeEl) edgeEl.textContent = '0 kali';
+    return;
+  }
+
+  const durationSec = (blackboxData[total - 1].tMs / 1000.0).toFixed(2);
+  if (durEl) durEl.textContent = `${durationSec} s`;
+
+  let maxL = 0;
+  let maxR = 0;
+  let enemyHits = 0;
+  let edgeHits = 0;
+
+  for (const d of blackboxData) {
+    maxL = Math.max(maxL, Math.abs(d.pwmL));
+    maxR = Math.max(maxR, Math.abs(d.pwmR));
+    if (d.edgeMask > 0) edgeHits++;
+
+    let hasEnemy = false;
+    for (let k = 0; k < 6; k++) {
+      if (d.tof[k] >= 1 && d.tof[k] <= 400) {
+        hasEnemy = true;
+        break;
+      }
+    }
+    if (hasEnemy) enemyHits++;
+  }
+
+  if (speedEl) speedEl.textContent = `${maxL}% / ${maxR}%`;
+  if (enemyEl) enemyEl.textContent = `${enemyHits} baris`;
+  if (edgeEl) edgeEl.textContent = `${edgeHits} baris`;
+}
+
+function getMotorActionText(pwmL, pwmR) {
+  if (pwmL === 0 && pwmR === 0) return 'Diam (Stop)';
+  if (pwmL > 0 && pwmR > 0) {
+    if (Math.abs(pwmL - pwmR) <= 10) return `Maju Lurus (${pwmL}%)`;
+    if (pwmL > pwmR) return `Serong Kanan Halus`;
+    return `Serong Kiri Halus`;
+  }
+  if (pwmL < 0 && pwmR < 0) {
+    return `Mundur Reflex (${pwmL}%)`;
+  }
+  if (pwmL > 0 && pwmR <= 0) return `Pivot Kanan`;
+  if (pwmL <= 0 && pwmR > 0) return `Pivot Kiri`;
+  return `Manuver`;
+}
+
+function renderIrBadges(edgeMask) {
+  const fl = (edgeMask & (1 << 0)) ? 'hit' : 'safe';
+  const fr = (edgeMask & (1 << 1)) ? 'hit' : 'safe';
+  const bl = (edgeMask & (1 << 2)) ? 'hit' : 'safe';
+  const br = (edgeMask & (1 << 3)) ? 'hit' : 'safe';
+  return `
+    <div class="ir-matrix-cell">
+      <span class="ir-micro-pill ${fl}">FL:${fl === 'hit' ? 'PUTIH' : 'OK'}</span>
+      <span class="ir-micro-pill ${fr}">FR:${fr === 'hit' ? 'PUTIH' : 'OK'}</span>
+      <span class="ir-micro-pill ${bl}">BL:${bl === 'hit' ? 'PUTIH' : 'OK'}</span>
+      <span class="ir-micro-pill ${br}">BR:${br === 'hit' ? 'PUTIH' : 'OK'}</span>
+    </div>
+  `;
+}
+
+function renderTofChips(tofArr) {
+  const names = ['FL', 'FC', 'FR', 'ML', 'MR', 'RR'];
+  let html = '<div class="tof-matrix-cell">';
+  for (let i = 0; i < 6; i++) {
+    const d = tofArr[i];
+    const isEnemy = (d >= 1 && d <= 400);
+    const cls = isEnemy ? 'tof-micro-chip enemy-hit' : 'tof-micro-chip';
+    const distText = (d >= 2000 || d === 0) ? '--' : `${d}mm`;
+    html += `<span class="${cls}">${isEnemy ? '🎯 ' : ''}${names[i]}:${distText}</span>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderBlackboxTable() {
+  const tbody = document.getElementById('tbodyBlackbox');
+  if (!tbody) return;
+
+  if (blackboxData.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="bb-table-empty">
+          Belum ada data log yang dimuat. Klik tombol <strong>"📥 Tarik Data Log"</strong> untuk mengambil data dari Flash ESP32.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  // Filter rows
+  const filtered = blackboxData.filter((row, idx) => {
+    row._origIdx = idx;
+    if (activeLogFilter === 'enemy') {
+      return row.tof.some(d => d >= 1 && d <= 400);
+    }
+    if (activeLogFilter === 'edge') {
+      return row.edgeMask > 0;
+    }
+    if (activeLogFilter === 'motor') {
+      return row.pwmL !== 0 || row.pwmR !== 0;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="bb-table-empty">
+          Tidak ada baris data yang cocok dengan filter <strong>"${activeLogFilter}"</strong>.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(row => {
+    const timeSec = (row.tMs / 1000.0).toFixed(2);
+    const stateName = LOG_STATE_NAMES[row.stateId] || 'UNKNOWN';
+    const actionText = getMotorActionText(row.pwmL, row.pwmR);
+
+    // Motor bar widths
+    const barW_L = Math.min(50, Math.round(Math.abs(row.pwmL) / 2));
+    const barW_R = Math.min(50, Math.round(Math.abs(row.pwmR) / 2));
+    const barClass_L = row.pwmL >= 0 ? 'pos' : 'neg';
+    const barClass_R = row.pwmR >= 0 ? 'pos' : 'neg';
+
+    // Tilt check
+    const isTilted = (Math.abs(row.pitch) > 15 || Math.abs(row.roll) > 15);
+
+    html += `
+      <tr id="bbRow-${row._origIdx}" onclick="scrubToRow(${row._origIdx})">
+        <td>
+          <span class="time-tag">+${timeSec}s</span>
+          <span style="display:block; font-size:0.65rem; color:var(--text-muted);">${row.tMs}ms</span>
+        </td>
+        <td>
+          <span class="fsm-tag fsm-${stateName}">${stateName}</span>
+        </td>
+        <td>
+          <div class="motor-cell-wrap">
+            <span class="motor-label-val">L: ${row.pwmL > 0 ? '+' : ''}${row.pwmL}%</span>
+            <div class="motor-bar-bg"><div class="motor-bar-fill ${barClass_L}" style="width:${barW_L}px;"></div></div>
+            <span class="motor-label-val" style="margin-left:8px;">R: ${row.pwmR > 0 ? '+' : ''}${row.pwmR}%</span>
+            <div class="motor-bar-bg"><div class="motor-bar-fill ${barClass_R}" style="width:${barW_R}px;"></div></div>
+            <span class="motor-action-badge">${actionText}</span>
+          </div>
+        </td>
+        <td>
+          ${renderIrBadges(row.edgeMask)}
+        </td>
+        <td>
+          ${renderTofChips(row.tof)}
+        </td>
+        <td>
+          <div class="imu-cell ${isTilted ? 'tilted' : ''}">
+            <div>P:${row.pitch.toFixed(1)}° | R:${row.roll.toFixed(1)}°</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">${row.accel.toFixed(2)}g ${isTilted ? '⚠️ TERANGKAT' : ''}</div>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function scrubToRow(idx) {
+  if (idx < 0 || idx >= blackboxData.length) return;
+  const row = blackboxData[idx];
+
+  // Update Scrubber Text
+  const timeDisp = document.getElementById('scrubberCurrentTime');
+  const sumDisp = document.getElementById('scrubberStateSummary');
+  const slider = document.getElementById('bbScrubberSlider');
+
+  if (timeDisp) timeDisp.textContent = `+${(row.tMs / 1000.0).toFixed(2)}s (${row.tMs} ms)`;
+  if (sumDisp) {
+    const sName = LOG_STATE_NAMES[row.stateId] || 'UNKNOWN';
+    const act = getMotorActionText(row.pwmL, row.pwmR);
+    sumDisp.innerHTML = `State: <strong>${sName}</strong> | Motor: <strong>${act}</strong>`;
+  }
+  if (slider) slider.value = idx;
+
+  // Highlight row in table and scroll to view
+  document.querySelectorAll('.bb-data-table tr').forEach(tr => tr.classList.remove('highlight-scrub'));
+  const targetRow = document.getElementById(`bbRow-${idx}`);
+  if (targetRow) {
+    targetRow.classList.add('highlight-scrub');
+    targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function exportBlackboxCsv() {
+  if (blackboxData.length === 0) {
+    alert('Tidak ada data log untuk diekspor!');
+    return;
+  }
+
+  let csv = 'ms,detik,state,pwmL,pwmR,aksi_motor,edge_mask,edge_FL,edge_FR,edge_BL,edge_BR,tof_FL_mm,tof_FC_mm,tof_FR_mm,tof_ML_mm,tof_MR_mm,tof_RR_mm,pitch_deg,roll_deg,accel_g\n';
+
+  blackboxData.forEach(row => {
+    const sec = (row.tMs / 1000.0).toFixed(2);
+    const sName = LOG_STATE_NAMES[row.stateId] || 'UNKNOWN';
+    const act = getMotorActionText(row.pwmL, row.pwmR).replace(/,/g, ' ');
+    const fl = (row.edgeMask & 1) ? 1 : 0;
+    const fr = (row.edgeMask & 2) ? 1 : 0;
+    const bl = (row.edgeMask & 4) ? 1 : 0;
+    const br = (row.edgeMask & 8) ? 1 : 0;
+
+    csv += `${row.tMs},${sec},${sName},${row.pwmL},${row.pwmR},"${act}",${row.edgeMask},${fl},${fr},${bl},${br},${row.tof[0]},${row.tof[1]},${row.tof[2]},${row.tof[3]},${row.tof[4]},${row.tof[5]},${row.pitch.toFixed(1)},${row.roll.toFixed(1)},${row.accel.toFixed(2)}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url;
+  a.download = `sumobot_blackbox_${nowStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  logTerminal(`💾 [CSV] File data log ${a.download} berhasil di-download!`, 'term-tx');
 }

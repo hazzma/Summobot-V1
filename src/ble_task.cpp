@@ -7,6 +7,7 @@
 #include "motor_hw.h"
 #include "nvm.h"
 #include "fsm_task.h"
+#include "data_logger.h"
 
 // Nordic UART Service (NUS) UUIDs
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -19,6 +20,7 @@ static bool s_deviceConnected = false;
 static bool s_oldDeviceConnected = false;
 
 // Opsi logging telemetri aktif
+static bool s_liveTelemetryEnabled = true;
 static bool s_streamIR = true;
 static bool s_streamToF = true;
 static bool s_streamIMU = true;
@@ -32,12 +34,12 @@ static void sendTxResponse(const String& payload) {
       p += "\n";
     }
 
-    // Amankan pengiriman dengan chunking 20-byte standar BLE ATT MTU
+    // Amankan pengiriman dengan chunking 60-byte BLE ATT MTU
     const uint8_t* data = (const uint8_t*)p.c_str();
     size_t len = p.length();
     size_t offset = 0;
     while (offset < len) {
-      size_t chunk = (len - offset > 20) ? 20 : (len - offset);
+      size_t chunk = (len - offset > 60) ? 60 : (len - offset);
       s_pTxCharacteristic->setValue(data + offset, chunk);
       s_pTxCharacteristic->notify();
       offset += chunk;
@@ -187,6 +189,7 @@ void handleIncomingJson(const char* jsonStr) {
     sendFullConfig();
   }
   else if (strcmp(cmd, "stream") == 0 || strcmp(cmd, "set_log") == 0) {
+    if (doc["live"].is<bool>())  s_liveTelemetryEnabled = doc["live"];
     if (doc["ir"].is<bool>())    s_streamIR  = doc["ir"];
     if (doc["tof"].is<bool>())   s_streamToF = doc["tof"];
     if (doc["imu"].is<bool>())   s_streamIMU = doc["imu"];
@@ -201,6 +204,103 @@ void handleIncomingJson(const char* jsonStr) {
   else if (strcmp(cmd, "estop") == 0 || strcmp(cmd, "stop") == 0) {
     triggerCombatStop();
     motorhw::stopAll(true);
+  }
+  else if (strcmp(cmd, "log_start") == 0) {
+    dataLogger::start();
+    JsonDocument res;
+    res["t"] = "log_status";
+    res["recording"] = true;
+    res["count"] = 0;
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
+  }
+  else if (strcmp(cmd, "log_stop") == 0) {
+    dataLogger::stop();
+    JsonDocument res;
+    res["t"] = "log_status";
+    res["recording"] = false;
+    res["count"] = dataLogger::getCount();
+    res["saved"] = true;
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
+  }
+  else if (strcmp(cmd, "log_status") == 0) {
+    JsonDocument res;
+    res["t"] = "log_status";
+    res["recording"] = dataLogger::isLogging();
+    res["count"] = dataLogger::getCount();
+    res["hasFlash"] = dataLogger::hasFlashData();
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
+  }
+  else if (strcmp(cmd, "log_clear") == 0) {
+    dataLogger::clear();
+    JsonDocument res;
+    res["t"] = "log_status";
+    res["recording"] = false;
+    res["count"] = 0;
+    res["cleared"] = true;
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
+  }
+  else if (strcmp(cmd, "log_fetch") == 0 || strcmp(cmd, "log_get") == 0) {
+    if (dataLogger::isLogging()) {
+      dataLogger::stop();
+    }
+    if (dataLogger::getCount() == 0 && dataLogger::hasFlashData()) {
+      dataLogger::loadFromFlash();
+    }
+    uint16_t total = dataLogger::getCount();
+    {
+      JsonDocument startDoc;
+      startDoc["t"] = "log_start";
+      startDoc["total"] = total;
+      String out;
+      serializeJson(startDoc, out);
+      sendTxResponse(out);
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    // Kirim per batch 5 sampel untuk kestabilan paket BLE
+    for (uint16_t i = 0; i < total; i += 5) {
+      if (!s_deviceConnected) break;
+      JsonDocument bdoc;
+      bdoc["t"] = "log_data";
+      bdoc["idx"] = i;
+      JsonArray rows = bdoc["rows"].to<JsonArray>();
+      for (uint16_t j = i; j < i + 5 && j < total; j++) {
+        LogSample s;
+        if (dataLogger::getSample(j, s)) {
+          JsonArray r = rows.add<JsonArray>();
+          r.add(s.tMs);
+          r.add(s.stateId);
+          r.add(s.pwmL);
+          r.add(s.pwmR);
+          r.add(s.edgeMask);
+          for (int k = 0; k < 6; k++) r.add(s.tof[k]);
+          r.add(s.pitch);
+          r.add(s.roll);
+          r.add(s.accel);
+        }
+      }
+      String out;
+      serializeJson(bdoc, out);
+      sendTxResponse(out);
+      vTaskDelay(pdMS_TO_TICKS(15));
+    }
+
+    {
+      JsonDocument endDoc;
+      endDoc["t"] = "log_end";
+      endDoc["total"] = total;
+      String endOut;
+      serializeJson(endDoc, endOut);
+      sendTxResponse(endOut);
+    }
   }
 }
 
@@ -284,9 +384,9 @@ void bleTask(void* pv) {
       sendFullConfig();
     }
 
-    // Kirim telemetri periodik ke Web Dashboard
+    // Kirim telemetri periodik ke Web Dashboard (hanya jika live telemetry aktif)
     unsigned long now = millis();
-    if (s_deviceConnected && (now - lastTelemetryTime >= s_streamIntervalMs)) {
+    if (s_deviceConnected && s_liveTelemetryEnabled && (now - lastTelemetryTime >= s_streamIntervalMs)) {
       lastTelemetryTime = now;
 
       uint8_t edgeMask;
@@ -305,6 +405,9 @@ void bleTask(void* pv) {
       doc["op"] = (nvm::loadMode() == OpMode::SUMO) ? "COMBAT" : "DATA";
       doc["spd"] = (getSpeedMode() == SpeedMode::COMPETITION) ? "COMPETITION" : "TEST";
       doc["gyroEn"] = nvm::isGyroEnabled();
+      doc["logRec"] = dataLogger::isLogging();
+      doc["logCnt"] = dataLogger::getCount();
+      doc["logFlash"] = dataLogger::hasFlashData();
 
       if (s_streamIR) {
         JsonArray irArr = doc["ir"].to<JsonArray>();

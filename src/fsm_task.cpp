@@ -7,6 +7,7 @@
 #include "nvm.h"
 #include "feature_flags.h"
 #include "speed_config.h"
+#include "data_logger.h"
 
 enum class SumoState {
   WAIT_START,
@@ -16,6 +17,18 @@ enum class SumoState {
 
 static SumoState sumoState = SumoState::WAIT_START;
 static bool s_countdownActive = false;
+static LogStateId s_currentLogState = LOG_STATE_WAIT;
+
+static void recordLogPeriodic(LogStateId stateId) {
+  static unsigned long s_lastLogMs = 0;
+  unsigned long now = millis();
+  if (now - s_lastLogMs >= 50) { // 20 Hz
+    s_lastLogMs = now;
+    if (dataLogger::isLogging()) {
+      dataLogger::recordSample(stateId);
+    }
+  }
+}
 
 const char* getFsmStateName() {
   if (nvm::loadMode() == OpMode::TEST) {
@@ -33,14 +46,18 @@ void triggerCombatStart() {
   nvm::saveMode(OpMode::SUMO);
   sumoState = SumoState::INITIAL_DODGE;
   s_countdownActive = false;
-  Serial.println("[FSM] Combat Start dipicu via Web Studio!");
+  s_currentLogState = LOG_STATE_DODGE;
+  dataLogger::start(); // Otomatis rekam blackbox saat match dimulai
+  Serial.println("[FSM] Combat Start dipicu via Web Studio & Blackbox Logger aktif!");
 }
 
 void triggerCombatStop() {
   motorhw::stopAll(true);
   sumoState = SumoState::WAIT_START;
   s_countdownActive = false;
-  Serial.println("[FSM] Combat Stop dipicu via Web Studio!");
+  s_currentLogState = LOG_STATE_WAIT;
+  dataLogger::stop(); // Otomatis simpan rekaman ke SPIFFS Flash
+  Serial.println("[FSM] Combat Stop dipicu via Web Studio & Blackbox tersimpan.");
 }
 
 // ---- Parameter Tuning (Sesuai FSD & Hasil Uji) ----
@@ -121,6 +138,7 @@ static bool handleTilt() {
   const auto& spd = getSpeedProfile();
   motorhw::setLeft(-spd.tiltEscape);
   motorhw::setRight(-spd.tiltEscape);
+  s_currentLogState = LOG_STATE_TILT;
   return true;
 #else
   return false;
@@ -141,6 +159,7 @@ static bool handlePushback() {
     const auto& spd = getSpeedProfile();
     motorhw::setLeft(spd.pushbackJink);
     motorhw::setRight(-spd.pushbackJink * 2 / 3);
+    s_currentLogState = LOG_STATE_PUSH;
     vTaskDelay(pdMS_TO_TICKS(150));
     return true;
   }
@@ -161,6 +180,10 @@ static void executeTargetTracking(uint16_t distFL, uint16_t distFC, uint16_t dis
   bool seeFR = inRange(distFR);
 
   // 1. Prioritas Utama: Evaluasi 3 Sensor Depan (Smooth Pursuit Curve)
+  if (seeFL || seeFC || seeFR) {
+    s_currentLogState = LOG_STATE_ATTACK;
+  }
+
   if (seeFC && seeFL && seeFR) {
     // Semua sensor depan mendeteksi -> Maju lurus serang penuh!
     motorhw::setLeft(spd.attackFull);
@@ -215,6 +238,7 @@ static void executeTargetTracking(uint16_t distFL, uint16_t distFC, uint16_t dis
   bool seeRR = inRange(distRR);
 
   if (seeML || seeMR || seeRR) {
+    s_currentLogState = LOG_STATE_TRACK;
     uint16_t minDist = 9999;
     int targetZone = 0; // 4=ML, 5=MR, 6=RR
     if (seeML && distML < minDist) { minDist = distML; targetZone = 4; }
@@ -247,6 +271,7 @@ static void executeTargetTracking(uint16_t distFL, uint16_t distFC, uint16_t dis
 
   // 3. Default: Tidak ada musuh terdeteksi di range 1-400mm -> DIAM (stopMotors)
   motorhw::stopAll();
+  s_currentLogState = LOG_STATE_SEARCH;
 }
 
 
@@ -275,13 +300,20 @@ void fsmTask(void* pv) {
       }
       sumoState = SumoState::WAIT_START;
       s_countdownActive = false;
-      vTaskDelay(pdMS_TO_TICKS(100));
+      s_currentLogState = LOG_STATE_TEST;
+      recordLogPeriodic(LOG_STATE_TEST);
+      vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
     wasSumo = true;
 
     // 1. Reflex sensor garis (Prioritas 1 Mutlak - berlaku di semua state)
-    if (handleEdge()) { vTaskDelay(pdMS_TO_TICKS(2)); continue; }
+    if (handleEdge()) {
+      s_currentLogState = LOG_STATE_EDGE;
+      recordLogPeriodic(LOG_STATE_EDGE);
+      vTaskDelay(pdMS_TO_TICKS(2));
+      continue;
+    }
 
     // Ambil data ToF dengan proteksi spinlock
     uint16_t distL, distC, distR;
@@ -419,6 +451,7 @@ void fsmTask(void* pv) {
       }
     }
 
+    recordLogPeriodic(s_currentLogState);
     vTaskDelay(pdMS_TO_TICKS(2)); // Loop rate ~500 Hz
   }
 }

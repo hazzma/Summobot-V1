@@ -81,8 +81,10 @@ static void initSensorPair(int idxFront, int idxExtra, gpio_num_t pin, uint8_t a
 
 void tofTask(void* pv) {
   Wire.begin(21, 22, 400000); // SDA0 (21), SCL0 (22), 400 kHz Fast Mode
+  Wire.setTimeOut(10);
 #if HAS_EXTRA_TOF
   Wire1.begin(18, 19, 400000); // SDA1 (18), SCL1 (19), 400 kHz Fast Mode
+  Wire1.setTimeOut(10);
 #endif
 
   // Tahan semua pin XSHUT pada level LOW (semua sensor di-reset)
