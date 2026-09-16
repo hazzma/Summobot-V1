@@ -57,6 +57,7 @@ static void sendFullConfig() {
     doc["mode"] = "TEST";
     doc["opMode"] = isCombat ? "COMBAT" : "DATA";
     doc["activeSpdMode"] = spdModeStr;
+    doc["gyroEn"] = nvm::isGyroEnabled();
 
     const SpeedProfile& p = getSpeedProfileWritable(SpeedMode::TEST);
     doc["attackFull"]   = p.attackFull;
@@ -86,6 +87,7 @@ static void sendFullConfig() {
     doc["mode"] = "COMPETITION";
     doc["opMode"] = isCombat ? "COMBAT" : "DATA";
     doc["activeSpdMode"] = spdModeStr;
+    doc["gyroEn"] = nvm::isGyroEnabled();
 
     const SpeedProfile& p = getSpeedProfileWritable(SpeedMode::COMPETITION);
     doc["attackFull"]   = p.attackFull;
@@ -146,6 +148,19 @@ void handleIncomingJson(const char* jsonStr) {
   }
   else if (strcmp(cmd, "combat_stop") == 0) {
     triggerCombatStop();
+  }
+  else if (strcmp(cmd, "set_gyro") == 0 || strcmp(cmd, "set_gyro_logic") == 0) {
+    bool en = false;
+    if (doc["enabled"].is<bool>()) {
+      en = doc["enabled"].as<bool>();
+    } else if (doc["en"].is<bool>()) {
+      en = doc["en"].as<bool>();
+    } else {
+      en = !nvm::isGyroEnabled();
+    }
+    nvm::setGyroEnabled(en);
+    Serial.printf("[NVM] Logika Gyro IMU diubah via Web Studio: %s\n", en ? "AKTIF" : "NONAKTIF (DIABAIKAN)");
+    sendFullConfig();
   }
   else if (strcmp(cmd, "save_profile") == 0 || strcmp(cmd, "set_profile") == 0) {
     const char* targetModeStr = doc["mode"] | "TEST";
@@ -289,6 +304,7 @@ void bleTask(void* pv) {
       doc["t"] = "telem";
       doc["op"] = (nvm::loadMode() == OpMode::SUMO) ? "COMBAT" : "DATA";
       doc["spd"] = (getSpeedMode() == SpeedMode::COMPETITION) ? "COMPETITION" : "TEST";
+      doc["gyroEn"] = nvm::isGyroEnabled();
 
       if (s_streamIR) {
         JsonArray irArr = doc["ir"].to<JsonArray>();

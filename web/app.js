@@ -26,6 +26,7 @@ let rxBuffer = '';
 let currentOpMode = 'DATA'; // 'DATA' | 'COMBAT'
 let currentCombatLevel = 'TEST'; // 'TEST' | 'COMPETITION'
 let currentTuningMode = 'TEST'; // 'TEST' | 'COMPETITION'
+let isGyroEnabled = true;
 
 // Active Profiles Cache (Default fallbacks matching firmware)
 const profiles = {
@@ -186,10 +187,20 @@ function initConnectionButtons() {
     }
   });
 
-  btnEStop.addEventListener('click', () => {
-    sendData(JSON.stringify({ cmd: 'estop' }) + '\n');
-    logTerminal('[E-STOP] Perintah Darurat Motor Dimatikan!', 'term-err');
+  btnQuickStop.addEventListener('click', () => {
+    sendData(JSON.stringify({ cmd: 'combat_stop' }) + '\n');
+    logTerminal('[COMBAT] Perintah STANDBY (Motor OFF) dikirim.', 'term-err');
   });
+
+  // Logika Gyro IMU Toggle Buttons
+  const btnToggleGyro = document.getElementById('btnToggleGyro');
+  if (btnToggleGyro) {
+    btnToggleGyro.addEventListener('click', toggleGyroLogic);
+  }
+  const btnToggleGyroInline = document.getElementById('btnToggleGyroInline');
+  if (btnToggleGyroInline) {
+    btnToggleGyroInline.addEventListener('click', toggleGyroLogic);
+  }
 
   btnApplyStream.addEventListener('click', () => {
     const payload = {
@@ -469,7 +480,12 @@ function handlePacket(pkt) {
       }
     }
 
-    // 5. FSM State & Motors
+    // 5. Status Logika Gyro IMU
+    if (pkt.gyroEn !== undefined) {
+      updateGyroLogicUI(pkt.gyroEn);
+    }
+
+    // 6. FSM State & Motors
     if (pkt.fsm) {
       document.getElementById('statFsm').textContent = pkt.fsm;
     }
@@ -477,6 +493,9 @@ function handlePacket(pkt) {
       document.getElementById('statMotor').textContent = `${pkt.m[0]} / ${pkt.m[1]}`;
     }
   } else if (pkt.t === 'profile') {
+    if (pkt.gyroEn !== undefined) {
+      updateGyroLogicUI(pkt.gyroEn);
+    }
     if (pkt.mode) {
       const modeKey = pkt.mode;
       profiles[modeKey] = { ...profiles[modeKey], ...pkt };
@@ -500,6 +519,57 @@ function handlePacket(pkt) {
       document.getElementById('btnCombatComp').classList.toggle('active', isComp);
     }
   }
+}
+
+// ============================================================================
+// Gyro IMU Logic Controls
+// ============================================================================
+function updateGyroLogicUI(enabled) {
+  isGyroEnabled = !!enabled;
+
+  const btnToggleGyro = document.getElementById('btnToggleGyro');
+  const badgeGyroStatus = document.getElementById('badgeGyroStatus');
+  const lblGyroSwitch = document.getElementById('lblGyroSwitch');
+
+  if (btnToggleGyro) {
+    btnToggleGyro.classList.toggle('active', isGyroEnabled);
+    btnToggleGyro.classList.toggle('disabled', !isGyroEnabled);
+  }
+  if (badgeGyroStatus) {
+    badgeGyroStatus.textContent = isGyroEnabled ? 'AKTIF' : 'NONAKTIF';
+    badgeGyroStatus.className = isGyroEnabled ? 'badge-tag tag-cyan' : 'badge-tag tag-red';
+  }
+  if (lblGyroSwitch) {
+    lblGyroSwitch.textContent = isGyroEnabled ? 'LOGIKA GYRO: AKTIF' : 'LOGIKA GYRO: NONAKTIF (DIABAIKAN)';
+  }
+
+  const btnToggleGyroInline = document.getElementById('btnToggleGyroInline');
+  const lblGyroInline = document.getElementById('lblGyroInline');
+  const imuLogicNote = document.getElementById('imuLogicNote');
+
+  if (btnToggleGyroInline) {
+    btnToggleGyroInline.classList.toggle('active', isGyroEnabled);
+    btnToggleGyroInline.classList.toggle('disabled', !isGyroEnabled);
+  }
+  if (lblGyroInline) {
+    lblGyroInline.textContent = isGyroEnabled ? 'Logika Gyro: AKTIF' : 'Logika Gyro: NONAKTIF';
+  }
+  if (imuLogicNote) {
+    if (isGyroEnabled) {
+      imuLogicNote.className = 'imu-logic-note';
+      imuLogicNote.innerHTML = '🛡️ <strong>Logika Gyro Aktif:</strong> Proteksi kemiringan (tilt escape &ge; 15&deg;), pushback, dan dodge aktif.';
+    } else {
+      imuLogicNote.className = 'imu-logic-note disabled';
+      imuLogicNote.innerHTML = '⚠️ <strong>Logika Gyro Nonaktif:</strong> Proteksi tilt, pushback, dan gyro dodge diabaikan (robot murni mengandalkan 6x ToF & 4x IR).';
+    }
+  }
+}
+
+function toggleGyroLogic() {
+  const nextState = !isGyroEnabled;
+  updateGyroLogicUI(nextState);
+  sendData(JSON.stringify({ cmd: 'set_gyro', enabled: nextState }) + '\n');
+  logTerminal(`[GYRO] Logika Gyro IMU diubah ke: ${nextState ? 'AKTIF' : 'NONAKTIF (DIABAIKAN)'}`, nextState ? 'term-tx' : 'term-warn');
 }
 
 // UI Updaters

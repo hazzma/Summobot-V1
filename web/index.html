@@ -149,6 +149,27 @@
         </div>
       </div>
 
+      <!-- Logika Gyro IMU Toggle Card -->
+      <div class="glass-card gyro-card-sidebar">
+        <div class="card-header-compact">
+          <h3 class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="12 8 8 12 12 16 16 12 12 8"></polygon>
+            </svg>
+            Logika Gyro / IMU
+          </h3>
+          <span id="badgeGyroStatus" class="badge-tag tag-cyan">AKTIF</span>
+        </div>
+        <p class="card-desc">Jika OFF, robot mengabaikan tilt, pushback, & gyro dodge (murni 6x ToF & 4x IR):</p>
+        <div class="gyro-switch-wrapper">
+          <button id="btnToggleGyro" class="btn-gyro-switch active">
+            <span class="gyro-indicator-dot"></span>
+            <span id="lblGyroSwitch">LOGIKA GYRO: AKTIF</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Stream Selector Card -->
       <div class="glass-card stream-selector">
         <h3 class="card-title">
@@ -370,7 +391,16 @@
 
             <!-- IMU Attitude Gauge -->
             <div class="imu-card-inline">
-              <h3 class="sub-title">IMU MPU6050 (Attitude & Tilt)</h3>
+              <div class="imu-inline-header">
+                <h3 class="sub-title">IMU MPU6050 (Attitude & Tilt)</h3>
+                <button id="btnToggleGyroInline" class="btn-gyro-inline active">
+                  <span class="gyro-dot-small"></span>
+                  <span id="lblGyroInline">Logika Gyro: AKTIF</span>
+                </button>
+              </div>
+              <p class="imu-logic-note" id="imuLogicNote">
+                🛡️ <strong>Logika Gyro Aktif:</strong> Proteksi kemiringan (tilt escape &ge; 15&deg;), pushback, dan dodge aktif.
+              </p>
               <div class="imu-grid">
                 <div class="imu-cell">
                   <span class="lbl">Pitch:</span>
