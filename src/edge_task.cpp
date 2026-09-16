@@ -7,8 +7,8 @@
 #if HAS_LINE_IR
 #define IR_FL GPIO_NUM_34
 #define IR_FR GPIO_NUM_23
-#define IR_BL GPIO_NUM_14
-#define IR_BR GPIO_NUM_13
+#define IR_BL GPIO_NUM_13
+#define IR_BR GPIO_NUM_14
 
 #define EDGE_FL (1 << 0)
 #define EDGE_FR (1 << 1)

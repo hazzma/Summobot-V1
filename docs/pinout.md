@@ -51,8 +51,8 @@ Pin berikut dialokasikan khusus untuk sensor garis arena (Line IR) yang terhubun
 | :--- | :---: | :---: | :---: | :--- |
 | **Line IR Depan-Kiri** | `LINE_FL` | **GPIO 34** | Input Only | Tidak ada pull-up internal; butuh external pull-up |
 | **Line IR Depan-Kanan** | `LINE_FR` | **GPIO 23** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 35) |
-| **Line IR Belakang-Kiri**| `LINE_BL` | **GPIO 14** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 36) |
-| **Line IR Belakang-Kanan**| `LINE_BR`| **GPIO 13** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 39) |
+| **Line IR Belakang-Kiri**| `LINE_BL` | **GPIO 13** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 36) |
+| **Line IR Belakang-Kanan**| `LINE_BR`| **GPIO 14** | Digital In | GPIO standar, internal pull-up didukung (dipindah dari GPIO 39) |
 
 > **Arsitektur Shared-XSHUT (§1.2 & §6.1 FSD):**  
 > Saat 3 sensor ToF tambahan dipasang pada **I2C1**, pin **GPIO 25, 33, dan 32** masing-masing akan mengontrol **2 sensor sekaligus** secara paralel (1 di I2C0 dan 1 di I2C1). Karena bus I2C terpisah secara elektrik, tidak akan ada tabrakan alamat `0x29`. Tidak diperlukan GPIO XSHUT baru.
