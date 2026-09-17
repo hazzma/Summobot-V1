@@ -42,23 +42,50 @@ const char* getFsmStateName() {
   }
 }
 
+static bool s_startTriggered = false;
+static unsigned long s_countdownStartTime = 0;
+
 void triggerCombatStart() {
   nvm::saveMode(OpMode::SUMO);
-  sumoState = SumoState::INITIAL_DODGE;
+  s_startTriggered = true;
   s_countdownActive = false;
+  sumoState = SumoState::INITIAL_DODGE;
   s_currentLogState = LOG_STATE_DODGE;
-  dataLogger::start(); // Otomatis rekam blackbox saat match dimulai
-  Serial.println("[FSM] Combat Start dipicu via Web Studio & Blackbox Logger aktif!");
+  // Logging dipisahkan dan dikontrol mandiri via tombol 'log_start' di web studio / CLI
+  Serial.println("[FSM] Combat Start dipicu (Otonom aktif)!");
 }
 
 void triggerCombatStop() {
   motorhw::stopAll(true);
-  sumoState = SumoState::WAIT_START;
+  s_startTriggered = false;
   s_countdownActive = false;
+  sumoState = SumoState::WAIT_START;
   s_currentLogState = LOG_STATE_WAIT;
-  dataLogger::stop(); // Otomatis simpan rekaman ke SPIFFS Flash
-  Serial.println("[FSM] Combat Stop dipicu via Web Studio & Blackbox tersimpan.");
+  Serial.println("[FSM] Combat Stop dipicu. Robot kembali ke STANDBY (WAIT_START).");
 }
+
+void triggerEmergencyStop() {
+  motorhw::stopAll(true);
+  s_startTriggered = false;
+  s_countdownActive = false;
+  sumoState = SumoState::WAIT_START;
+  s_currentLogState = LOG_STATE_WAIT;
+  nvm::saveMode(OpMode::TEST); // Paksa simpan ke TEST mode agar aman saat reboot
+  if (dataLogger::isLogging()) {
+    dataLogger::stop();
+  }
+  Serial.println("\n🚨 [EMERGENCY STOP] Motor DIMATIKAN PAKSA! Robot beralih ke STANDBY TEST MODE.");
+}
+
+void startManualCountdown() {
+  nvm::saveMode(OpMode::SUMO);
+  s_startTriggered = false;
+  s_countdownActive = true;
+  s_countdownStartTime = millis();
+  sumoState = SumoState::WAIT_START;
+  Serial.println("\n[COUNTDOWN] Memulai hitung mundur 5 detik menuju pertandingan...");
+}
+
 
 // ---- Parameter Tuning (Sesuai FSD & Hasil Uji) ----
 #define ENEMY_MIN_MM          1
@@ -333,29 +360,25 @@ void fsmTask(void* pv) {
 
     switch (sumoState) {
       case SumoState::WAIT_START: {
-        motorhw::stopAll();
+        motorhw::stopAll(true);
 
         bool cytronEn = nvm::isCytronEnabled();
         if (cytronEn) {
           // Cytron Aktif: Menunggu sinyal remote start di GPIO 4
           if (cytronStartReceived()) {
             Serial.println("[START] Sinyal Cytron IR diterima! Meluncur...");
-            sumoState = SumoState::INITIAL_DODGE;
+            triggerCombatStart();
             dodgeTimedStart = millis();
 #if HAS_IMU
             dodgeInit = false;
 #endif
+            break;
           }
-        } else {
-          // Cytron Dinonaktifkan: Hitung mundur aman 5 detik
-          if (!s_countdownActive) {
-            s_countdownActive = true;
-            countdownStart = millis();
-            lastCountSecond = -1;
-            Serial.println("\n[START] Cytron DISABLED. Memulai hitung mundur 5 detik...");
-          }
+        }
 
-          unsigned long elapsed = millis() - countdownStart;
+        // Hitung mundur 5 detik HANYA jika dipicu secara eksplisit (misal tombol Web / CLI)
+        if (s_countdownActive) {
+          unsigned long elapsed = millis() - s_countdownStartTime;
           int remaining = 5 - (int)(elapsed / 1000);
 
           if (remaining != lastCountSecond && remaining >= 0) {
@@ -369,11 +392,12 @@ void fsmTask(void* pv) {
 
           if (elapsed >= 5000) {
             s_countdownActive = false;
-            sumoState = SumoState::INITIAL_DODGE;
+            triggerCombatStart();
             dodgeTimedStart = millis();
 #if HAS_IMU
             dodgeInit = false;
 #endif
+            break;
           }
         }
         break;

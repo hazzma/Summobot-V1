@@ -7,6 +7,8 @@
 #include "tof_task.h"
 #include "speed_config.h"
 #include "data_logger.h"
+#include "fsm_task.h"
+#include "ble_task.h"
 
 enum class CliScreen {
   HOME,
@@ -29,16 +31,22 @@ static void printHome() {
   bool cytronEn = nvm::isCytronEnabled();
   bool gyroEn = nvm::isGyroEnabled();
   const auto& spd = getSpeedProfile();
+  size_t totalB = dataLogger::getTotalBytes();
+  size_t usedB  = dataLogger::getUsedBytes();
+  size_t freeB  = dataLogger::getFreeBytes();
+  size_t fileB  = dataLogger::getFileSize();
 
   Serial.println();
   Serial.println("============================================");
   Serial.println("         SUMOBOT 500g — CLI CONTROL         ");
   Serial.println("============================================");
-  Serial.printf("Mode Operasi Saat Ini : %s\n", (m == OpMode::SUMO) ? "SUMO (Otonom)" : "TEST");
+  Serial.printf("Mode Operasi Saat Ini : %s\n", (m == OpMode::SUMO) ? "SUMO (Otonom)" : "TEST (Standby)");
   Serial.printf("Profil Kecepatan      : %s\n", spd.name);
   Serial.printf("Fitur Algoritma Gyro  : %s\n", gyroEn ? "ENABLED (Dodge 45 deg + Tilt Protect)" : "DISABLED (Murni 6x ToF Tracking)");
-  Serial.printf("Cytron IR Start Modul : %s\n", cytronEn ? "ENABLED (GPIO 4 Active-LOW)" : "DISABLED (5s Auto-Countdown)");
+  Serial.printf("Cytron IR Start Modul : %s\n", cytronEn ? "ENABLED (GPIO 4 Active-LOW)" : "DISABLED (Menunggu Start Eksplisit)");
   Serial.printf("Blackbox Data Logger  : %s (%d sampel)\n", dataLogger::isLogging() ? "SEDANG REKAM [MERAH]" : "STANDBY", dataLogger::getCount());
+  Serial.printf("Kapasitas SPIFFS Flash: Terpakai %u KB / %u KB (Sisa %u KB) | File: %u B\n",
+                (unsigned)(usedB / 1024), (unsigned)(totalB / 1024), (unsigned)(freeB / 1024), (unsigned)fileB);
   Serial.println("--------------------------------------------");
   Serial.println("[1] Aktifkan SUMO Mode");
   Serial.println("[2] Masuk ke TEST Mode (Sensor & Motor Test)");
@@ -48,7 +56,9 @@ static void printHome() {
   Serial.println("[6] Toggle Fitur Algoritma Gyro (ON/OFF)");
   Serial.println("[7] Mulai / Berhenti Rekam Blackbox (Flash)");
   Serial.println("[8] Tarik / Dump Log CSV ke Serial Monitor");
-  Serial.println("[9] Hapus Log Flash (/blackbox.csv)");
+  Serial.println("[9] Hapus Log Flash (/blackbox.csv) & Cek Sisa");
+  Serial.println("[c] Mulai Hitung Mundur 5 Detik (Manual Start)");
+  Serial.println("[e] EMERGENCY STOP (Hentikan Motor Seketika)");
   Serial.print("> ");
 }
 
@@ -86,6 +96,12 @@ static void printMotorControl(int m) {
 }
 
 static void handleLine(const char* line) {
+  // 1. Dukungan Penuh Web Serial (JSON Commands dari Browser Studio)
+  if (line[0] == '{') {
+    handleIncomingJson(line);
+    return;
+  }
+
   switch (screen) {
     case CliScreen::HOME:
       if (line[0] == '1') {
@@ -94,9 +110,10 @@ static void handleLine(const char* line) {
         if (nvm::isCytronEnabled()) {
           Serial.println("[INFO] Robot menunggu sinyal remote Cytron di GPIO 4...");
         } else {
-          Serial.println("[INFO] Cytron nonaktif. Hitung mundur 5 detik akan berjalan saat start.");
+          Serial.println("[INFO] Cytron nonaktif. Tekan 'c' untuk mulai hitung mundur 5 detik.");
         }
       } else if (line[0] == '2') {
+        triggerCombatStop();
         nvm::saveMode(OpMode::TEST);
         Serial.println("\n[OK] Mode TEST diaktifkan & disimpan ke NVS.");
         screen = CliScreen::TEST_MENU;
@@ -107,7 +124,7 @@ static void handleLine(const char* line) {
         bool newState = !current;
         nvm::setCytronEnabled(newState);
         Serial.printf("\n[NVS] Cytron IR Start diubah menjadi: %s\n",
-                      newState ? "ENABLED (Menunggu sinyal remote)" : "DISABLED (Auto hitung mundur 5s)");
+                      newState ? "ENABLED (Menunggu sinyal remote)" : "DISABLED (Manual 'c' / Web Start)");
       } else if (line[0] == '4') {
         SpeedMode cur = getSpeedMode();
         SpeedMode next = (cur == SpeedMode::TEST) ? SpeedMode::COMPETITION : SpeedMode::TEST;
@@ -169,7 +186,15 @@ static void handleLine(const char* line) {
         Serial.println("=== AKHIR DUMP LOG ===");
       } else if (line[0] == '9') {
         dataLogger::clear();
-        Serial.println("\n[LOG] Log di Flash berhasil dihapus.");
+        Serial.println("\n[LOG] Seluruh log di Flash (/blackbox.csv) telah dihapus!");
+        Serial.printf("      Status Memori Flash: Sisa Free %u KB (Total %u KB), File: %u B (BERSIH)\n",
+                      (unsigned)(dataLogger::getFreeBytes() / 1024),
+                      (unsigned)(dataLogger::getTotalBytes() / 1024),
+                      (unsigned)dataLogger::getFileSize());
+      } else if (line[0] == 'c' || line[0] == 'C') {
+        startManualCountdown();
+      } else if (line[0] == 'e' || line[0] == 'E') {
+        triggerEmergencyStop();
       }
       printHome();
       break;

@@ -169,16 +169,18 @@ bool loadFromFlash() {
   File f = SPIFFS.open(LOG_FILE_PATH, "r");
   if (!f) return false;
 
-  // Baca baris pertama (header)
-  String header = f.readStringUntil('\n');
+  // Baca baris header pertama
+  char headerBuf[128];
+  f.readBytesUntil('\n', headerBuf, sizeof(headerBuf));
 
-  portENTER_CRITICAL(&s_loggerMux);
-  s_sampleCount = 0;
+  uint16_t loadedCount = 0;
+  char lineBuf[128];
 
-  while (f.available() && s_sampleCount < MAX_LOG_SAMPLES) {
-    String line = f.readStringUntil('\n');
-    line.trim();
-    if (line.length() == 0) continue;
+  // Muat data di luar spinlock agar CPU & watchdog tidak terganggu oleh SPI Flash I/O
+  while (f.available() && loadedCount < MAX_LOG_SAMPLES) {
+    size_t len = f.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
+    lineBuf[len] = '\0';
+    if (len == 0 || lineBuf[0] == '\r' || lineBuf[0] == '\n') continue;
 
     unsigned long ms;
     unsigned int stateId, edge;
@@ -186,14 +188,14 @@ bool loadFromFlash() {
     unsigned int fl, fc, fr, ml, mr, rr;
     int p, r, az;
 
-    int matched = sscanf(line.c_str(),
+    int matched = sscanf(lineBuf,
                          "%lu,%u,%d,%d,%u,%u,%u,%u,%u,%u,%u,%d,%d,%d",
                          &ms, &stateId, &pwmL, &pwmR, &edge,
                          &fl, &fc, &fr, &ml, &mr, &rr,
                          &p, &r, &az);
 
     if (matched >= 14) {
-      LogSample& s = s_samples[s_sampleCount++];
+      LogSample& s = s_samples[loadedCount++];
       s.tMs = (uint32_t)ms;
       s.stateId = (uint8_t)stateId;
       s.pwmL = (int8_t)pwmL;
@@ -211,14 +213,41 @@ bool loadFromFlash() {
     }
   }
 
-  portEXIT_CRITICAL(&s_loggerMux);
   f.close();
-  Serial.printf("[LOG] Berhasil memuat %u data dari Flash ke memori.\n", s_sampleCount);
+
+  portENTER_CRITICAL(&s_loggerMux);
+  s_sampleCount = loadedCount;
+  portEXIT_CRITICAL(&s_loggerMux);
+
+  Serial.printf("[LOG] Berhasil memuat %u sampel dari Flash ke memori RAM.\n", loadedCount);
   return true;
 }
 
 bool hasFlashData() {
   return SPIFFS.exists(LOG_FILE_PATH);
+}
+
+size_t getTotalBytes() {
+  return SPIFFS.totalBytes();
+}
+
+size_t getUsedBytes() {
+  return SPIFFS.usedBytes();
+}
+
+size_t getFreeBytes() {
+  size_t total = SPIFFS.totalBytes();
+  size_t used = SPIFFS.usedBytes();
+  return (total > used) ? (total - used) : 0;
+}
+
+size_t getFileSize() {
+  if (!SPIFFS.exists(LOG_FILE_PATH)) return 0;
+  File f = SPIFFS.open(LOG_FILE_PATH, "r");
+  if (!f) return 0;
+  size_t s = f.size();
+  f.close();
+  return s;
 }
 
 const char* getStateName(uint8_t stateId) {

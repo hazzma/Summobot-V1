@@ -42,6 +42,10 @@ bool getSample(uint16_t idx, LogSample& outSample);
 bool saveToFlash();
 bool loadFromFlash();
 bool hasFlashData();
+size_t getTotalBytes();
+size_t getUsedBytes();
+size_t getFreeBytes();
+size_t getFileSize();
 
 const char* getStateName(uint8_t stateId);
 

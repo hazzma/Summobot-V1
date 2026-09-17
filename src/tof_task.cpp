@@ -27,10 +27,15 @@ bool isTofReady(int idx) {
 }
 
 static void initSensorPair(int idxFront, int idxExtra, gpio_num_t pin, uint8_t addr) {
+#if HAS_EXTRA_TOF
+  // Amankan bus I2C1 sebelum pin XSHUT dinyalakan agar MPU6050 di task lain tidak mengganggu bootloader VL53L1X di 0x29
+  if (g_wire1Mutex) xSemaphoreTake(g_wire1Mutex, portMAX_DELAY);
+#endif
+
   // Lepas pin XSHUT ke level HIGH (menyalakan kedua sensor di I2C0 & I2C1 secara simultan)
   gpio_set_direction(pin, GPIO_MODE_OUTPUT);
   gpio_set_level(pin, 1);
-  delay(20); // Waktu boot VL53L1X dari shutdown
+  delay(25); // Waktu boot VL53L1X dari shutdown
 
   // 1. Inisialisasi Sensor Depan di I2C0 (Wire)
   sensors[idxFront].setBus(&Wire);
@@ -59,7 +64,6 @@ static void initSensorPair(int idxFront, int idxExtra, gpio_num_t pin, uint8_t a
 
 #if HAS_EXTRA_TOF
   // 2. Inisialisasi Sensor Ekstensi di I2C1 (Wire1)
-  if (g_wire1Mutex) xSemaphoreTake(g_wire1Mutex, portMAX_DELAY);
   sensors[idxExtra].setBus(&Wire1);
   sensors[idxExtra].setTimeout(500);
   if (sensors[idxExtra].init()) {
@@ -81,10 +85,10 @@ static void initSensorPair(int idxFront, int idxExtra, gpio_num_t pin, uint8_t a
 
 void tofTask(void* pv) {
   Wire.begin(21, 22, 400000); // SDA0 (21), SCL0 (22), 400 kHz Fast Mode
-  Wire.setTimeOut(10);
+  Wire.setTimeOut(50);
 #if HAS_EXTRA_TOF
-  Wire1.begin(18, 19, 400000); // SDA1 (18), SCL1 (19), 400 kHz Fast Mode
-  Wire1.setTimeOut(10);
+  // Wire1 telah di-begin di setup() main.cpp. Gunakan timeout standar 50ms untuk clock-stretching.
+  Wire1.setTimeOut(50);
 #endif
 
   // Tahan semua pin XSHUT pada level LOW (semua sensor di-reset)
@@ -144,7 +148,7 @@ void tofTask(void* pv) {
         }
       } else {
         // Sensor Samping & Belakang (I2C1 - Wire1) dengan proteksi Mutex terhadap IMU MPU6050
-        if (g_wire1Mutex && xSemaphoreTake(g_wire1Mutex, pdMS_TO_TICKS(12)) == pdTRUE) {
+        if (g_wire1Mutex && xSemaphoreTake(g_wire1Mutex, pdMS_TO_TICKS(40)) == pdTRUE) {
           isReady = sensors[i].dataReady();
           if (isReady) {
             raw_d = sensors[i].read(false);

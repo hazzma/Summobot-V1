@@ -8,6 +8,7 @@
 #include "nvm.h"
 #include "fsm_task.h"
 #include "data_logger.h"
+#include "imu_task.h"
 
 // Nordic UART Service (NUS) UUIDs
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -27,7 +28,9 @@ static bool s_streamIMU = true;
 static bool s_streamState = true;
 static uint32_t s_streamIntervalMs = 100; // 10 Hz
 
-static void sendTxResponse(const String& payload) {
+static bool s_serialClientActive = false;
+
+void sendTxResponse(const String& payload) {
   if (s_deviceConnected && s_pTxCharacteristic) {
     String p = payload;
     if (!p.endsWith("\n")) {
@@ -46,7 +49,13 @@ static void sendTxResponse(const String& payload) {
       vTaskDelay(pdMS_TO_TICKS(2));
     }
   }
+
+  // Jika Web Serial client aktif atau Serial terhubung, outputkan JSON baris ke Serial
+  if (s_serialClientActive || Serial) {
+    Serial.println(payload);
+  }
 }
+
 
 static void sendFullConfig() {
   bool isCombat = (nvm::loadMode() == OpMode::SUMO);
@@ -114,6 +123,8 @@ static void sendFullConfig() {
 }
 
 void handleIncomingJson(const char* jsonStr) {
+  s_serialClientActive = true; // Tandai bahwa Web Client aktif mengirim JSON
+
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, jsonStr);
   if (err) return;
@@ -127,7 +138,7 @@ void handleIncomingJson(const char* jsonStr) {
     const char* m = doc["mode"] | "DATA";
     if (strcmp(m, "COMBAT") == 0 || strcmp(m, "SUMO") == 0) {
       nvm::saveMode(OpMode::SUMO);
-      triggerCombatStop(); // Bersiap di WAIT_START
+      triggerCombatStop(); // Masuk ke mode SUMO tapi tetap standby di WAIT_START
     } else {
       nvm::saveMode(OpMode::TEST);
       triggerCombatStop(); // Motor mati total di mode Ambil Data
@@ -147,9 +158,30 @@ void handleIncomingJson(const char* jsonStr) {
   }
   else if (strcmp(cmd, "combat_start") == 0) {
     triggerCombatStart();
+    JsonDocument res;
+    res["t"] = "combat_status";
+    res["state"] = "STARTED";
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
   }
   else if (strcmp(cmd, "combat_stop") == 0) {
     triggerCombatStop();
+    JsonDocument res;
+    res["t"] = "combat_status";
+    res["state"] = "STOPPED";
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
+  }
+  else if (strcmp(cmd, "start_countdown") == 0) {
+    startManualCountdown();
+    JsonDocument res;
+    res["t"] = "combat_status";
+    res["state"] = "COUNTDOWN";
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
   }
   else if (strcmp(cmd, "set_gyro") == 0 || strcmp(cmd, "set_gyro_logic") == 0) {
     bool en = false;
@@ -163,6 +195,16 @@ void handleIncomingJson(const char* jsonStr) {
     nvm::setGyroEnabled(en);
     Serial.printf("[NVM] Logika Gyro IMU diubah via Web Studio: %s\n", en ? "AKTIF" : "NONAKTIF (DIABAIKAN)");
     sendFullConfig();
+  }
+  else if (strcmp(cmd, "cal_gyro") == 0 || strcmp(cmd, "calibrate_gyro") == 0) {
+    calibrateIMU();
+    JsonDocument res;
+    res["t"] = "cal_gyro_ok";
+    res["status"] = "CALIBRATING";
+    res["msg"] = "Proses kalibrasi zero-drift & leveling dimulai (robot harap diam)";
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
   }
   else if (strcmp(cmd, "save_profile") == 0 || strcmp(cmd, "set_profile") == 0) {
     const char* targetModeStr = doc["mode"] | "TEST";
@@ -202,8 +244,17 @@ void handleIncomingJson(const char* jsonStr) {
     }
   }
   else if (strcmp(cmd, "estop") == 0 || strcmp(cmd, "stop") == 0) {
-    triggerCombatStop();
-    motorhw::stopAll(true);
+    triggerEmergencyStop();
+    JsonDocument res;
+    res["t"] = "estop_ok";
+    res["status"] = "STOPPED";
+    res["totalBytes"] = (uint32_t)dataLogger::getTotalBytes();
+    res["usedBytes"] = (uint32_t)dataLogger::getUsedBytes();
+    res["freeBytes"] = (uint32_t)dataLogger::getFreeBytes();
+    res["fileSize"] = (uint32_t)dataLogger::getFileSize();
+    String out;
+    serializeJson(res, out);
+    sendTxResponse(out);
   }
   else if (strcmp(cmd, "log_start") == 0) {
     dataLogger::start();
@@ -211,6 +262,10 @@ void handleIncomingJson(const char* jsonStr) {
     res["t"] = "log_status";
     res["recording"] = true;
     res["count"] = 0;
+    res["totalBytes"] = (uint32_t)dataLogger::getTotalBytes();
+    res["usedBytes"] = (uint32_t)dataLogger::getUsedBytes();
+    res["freeBytes"] = (uint32_t)dataLogger::getFreeBytes();
+    res["fileSize"] = (uint32_t)dataLogger::getFileSize();
     String out;
     serializeJson(res, out);
     sendTxResponse(out);
@@ -222,16 +277,25 @@ void handleIncomingJson(const char* jsonStr) {
     res["recording"] = false;
     res["count"] = dataLogger::getCount();
     res["saved"] = true;
+    res["hasFlash"] = dataLogger::hasFlashData();
+    res["totalBytes"] = (uint32_t)dataLogger::getTotalBytes();
+    res["usedBytes"] = (uint32_t)dataLogger::getUsedBytes();
+    res["freeBytes"] = (uint32_t)dataLogger::getFreeBytes();
+    res["fileSize"] = (uint32_t)dataLogger::getFileSize();
     String out;
     serializeJson(res, out);
     sendTxResponse(out);
   }
-  else if (strcmp(cmd, "log_status") == 0) {
+  else if (strcmp(cmd, "log_status") == 0 || strcmp(cmd, "flash_status") == 0) {
     JsonDocument res;
     res["t"] = "log_status";
     res["recording"] = dataLogger::isLogging();
     res["count"] = dataLogger::getCount();
     res["hasFlash"] = dataLogger::hasFlashData();
+    res["totalBytes"] = (uint32_t)dataLogger::getTotalBytes();
+    res["usedBytes"] = (uint32_t)dataLogger::getUsedBytes();
+    res["freeBytes"] = (uint32_t)dataLogger::getFreeBytes();
+    res["fileSize"] = (uint32_t)dataLogger::getFileSize();
     String out;
     serializeJson(res, out);
     sendTxResponse(out);
@@ -243,6 +307,11 @@ void handleIncomingJson(const char* jsonStr) {
     res["recording"] = false;
     res["count"] = 0;
     res["cleared"] = true;
+    res["hasFlash"] = false;
+    res["totalBytes"] = (uint32_t)dataLogger::getTotalBytes();
+    res["usedBytes"] = (uint32_t)dataLogger::getUsedBytes();
+    res["freeBytes"] = (uint32_t)dataLogger::getFreeBytes();
+    res["fileSize"] = 0;
     String out;
     serializeJson(res, out);
     sendTxResponse(out);
@@ -259,15 +328,16 @@ void handleIncomingJson(const char* jsonStr) {
       JsonDocument startDoc;
       startDoc["t"] = "log_start";
       startDoc["total"] = total;
+      startDoc["fileSize"] = (uint32_t)dataLogger::getFileSize();
       String out;
       serializeJson(startDoc, out);
       sendTxResponse(out);
     }
     vTaskDelay(pdMS_TO_TICKS(20));
 
-    // Kirim per batch 5 sampel untuk kestabilan paket BLE
+    // Kirim per batch 5 sampel untuk kestabilan paket BLE & Serial
     for (uint16_t i = 0; i < total; i += 5) {
-      if (!s_deviceConnected) break;
+      if (!s_deviceConnected && !s_serialClientActive && !Serial) break;
       JsonDocument bdoc;
       bdoc["t"] = "log_data";
       bdoc["idx"] = i;
@@ -384,9 +454,9 @@ void bleTask(void* pv) {
       sendFullConfig();
     }
 
-    // Kirim telemetri periodik ke Web Dashboard (hanya jika live telemetry aktif)
+    // Kirim telemetri periodik ke Web Dashboard (BLE ataupun Web Serial)
     unsigned long now = millis();
-    if (s_deviceConnected && s_liveTelemetryEnabled && (now - lastTelemetryTime >= s_streamIntervalMs)) {
+    if ((s_deviceConnected || s_serialClientActive) && s_liveTelemetryEnabled && (now - lastTelemetryTime >= s_streamIntervalMs)) {
       lastTelemetryTime = now;
 
       uint8_t edgeMask;

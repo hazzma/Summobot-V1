@@ -25,7 +25,7 @@ void setup() {
   cliCommandQueue = xQueueCreate(16, sizeof(SysCmd));
   g_wire1Mutex = xSemaphoreCreateMutex();
   Wire1.begin(18, 19, 400000); // SDA1: GPIO 18, SCL1: GPIO 19 (Shared MPU6050 & Extra ToF)
-  Wire1.setTimeOut(10);
+  Wire1.setTimeOut(50);
 
   Serial.println("\n[SYSTEM] Menginisialisasi FreeRTOS Tasks...");
 

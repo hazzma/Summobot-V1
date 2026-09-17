@@ -86,13 +86,29 @@ static bool readMPURaw(int16_t &ax, int16_t &ay, int16_t &az,
   if (g_wire1Mutex) xSemaphoreGive(g_wire1Mutex);
   return true;
 }
+
+static volatile bool s_calibrateReq = false;
+static float s_gzOffset = 0.0f;
+static float s_pitchOffset = 0.0f;
+static float s_rollOffset = 0.0f;
+static bool s_isCalibrated = false;
+
+void calibrateIMU() {
+  s_calibrateReq = true;
+}
+
+bool isIMUCalibrated() {
+  return s_isCalibrated;
+}
+#else
+void calibrateIMU() {}
+bool isIMUCalibrated() { return false; }
 #endif
 
 void imuTask(void* pv) {
 #if HAS_IMU
-  Wire1.begin(SDA1_PIN, SCL1_PIN, 400000);
-  Wire1.setTimeOut(10);
-  delay(50);
+  // Beri jeda 150ms agar tofTask menyelesaikan booting XSHUT dan penomoran alamat VL53L1X di I2C1
+  delay(150);
 
   if (!checkAndInitMPU()) {
     Serial.println("[WARN] MPU6050 tidak merespon saat boot di I2C1 (GPIO 18 SDA, GPIO 19 SCL)!");
@@ -124,6 +140,41 @@ void imuTask(void* pv) {
       continue;
     }
 
+    // Permintaan Kalibrasi Statis Gyro (Zero Drift & Leveling)
+    if (s_calibrateReq) {
+      s_calibrateReq = false;
+      Serial.println("[IMU] Memulai kalibrasi Gyro & Leveling... (Robot harap diam di tempat)");
+      float sumGz = 0.0f, sumPitch = 0.0f, sumRoll = 0.0f;
+      int validSamples = 0;
+
+      for (int k = 0; k < 50; k++) {
+        int16_t ax, ay, az, gx, gy, gz;
+        if (readMPURaw(ax, ay, az, gx, gy, gz)) {
+          float axG = ax / 16384.0f;
+          float ayG = ay / 16384.0f;
+          float azG = az / 16384.0f;
+          float gzVal = gz / 131.0f;
+          float p = atan2(axG, sqrt(ayG * ayG + azG * azG)) * 57.2957795f;
+          float r = atan2(ayG, azG) * 57.2957795f;
+          sumGz += gzVal;
+          sumPitch += p;
+          sumRoll += r;
+          validSamples++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+      }
+
+      if (validSamples > 15) {
+        s_gzOffset = sumGz / validSamples;
+        s_pitchOffset = sumPitch / validSamples;
+        s_rollOffset = sumRoll / validSamples;
+        integratedHeading = 0.0f;
+        s_isCalibrated = true;
+        Serial.printf("[IMU] Kalibrasi Selesai! Offset Gz: %.2f dps, Pitch: %.1f deg, Roll: %.1f deg\n",
+                      s_gzOffset, s_pitchOffset, s_rollOffset);
+      }
+    }
+
     int16_t rawAx, rawAy, rawAz, rawGx, rawGy, rawGz;
     if (readMPURaw(rawAx, rawAy, rawAz, rawGx, rawGy, rawGz)) {
       // Sensitivitas +/- 2g (16384 LSB/g) dan +/- 250 deg/s (131 LSB/(deg/s))
@@ -131,11 +182,13 @@ void imuTask(void* pv) {
       float axG = rawAx / 16384.0f;
       float ayG = rawAy / 16384.0f;
       float azG = rawAz / 16384.0f;
-      float gzDps = rawGz / 131.0f;
+      float gzDps = (rawGz / 131.0f) - s_gzOffset;
 
-      // Hidung terangkat -> axG positif
-      float pitch = atan2(axG, sqrt(ayG * ayG + azG * azG)) * 57.2957795f;
-      float roll  = atan2(ayG, azG) * 57.2957795f;
+      // Hidung terangkat -> axG positif (dikompensasi offset kalibrasi)
+      float rawPitch = atan2(axG, sqrt(ayG * ayG + azG * azG)) * 57.2957795f;
+      float rawRoll  = atan2(ayG, azG) * 57.2957795f;
+      float pitch = rawPitch - s_pitchOffset;
+      float roll  = rawRoll - s_rollOffset;
       float accelMag = sqrt(axG * axG + ayG * ayG + azG * azG);
 
       // Estimasi gravitasi statis (Low-pass filter ~0.5 Hz) untuk tare kemiringan meja
